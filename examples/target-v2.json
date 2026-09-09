@@ -1,0 +1,17 @@
+{
+  "$schema_file": "schemas/target-v2.schema.json",
+  "schema": "skrsi.target.v2",
+  "target_id": "review-latency",
+  "revision": 1,
+  "status": "draft",
+  "owner": "lifecycle-team",
+  "scope": {"products": ["example-product"], "event_types": ["review.started", "review.finished"]},
+  "objective": "Reduce review latency without weakening quality or independence.",
+  "invariants": ["independent review remains required", "no protected payload collection"],
+  "metrics": ["review_latency_ms", "first_pass_review_rate"],
+  "stop_rules": [
+    {"id": "quality-regression", "condition": "Any declared quality invariant fails.", "action": "abort", "owner": "lifecycle-team"}
+  ],
+  "expires_at": "2030-01-01T00:00:00Z",
+  "rollback": {"trigger": "any invariant failure", "owner": "lifecycle-team"}
+}

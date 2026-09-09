@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smilintux.github.io/skrsi/schemas/feedback-handoff-v1.schema.json",
+  "title": "SKRSI feedback handoff v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "handoff_id", "source_evaluation", "sender", "recipient_authority", "proposal", "evidence_refs", "requested_action", "authorization_granted", "expires_at"],
+  "properties": {
+    "schema": {"const": "skrsi.feedback-handoff.v1"},
+    "handoff_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "source_evaluation": {"type": "string", "minLength": 1},
+    "sender": {"type": "string", "minLength": 1},
+    "recipient_authority": {"type": "string", "minLength": 1},
+    "proposal": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "evidence_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}},
+    "requested_action": {"enum": ["consider", "review", "schedule"]},
+    "authorization_granted": {"const": false},
+    "expires_at": {"type": "string", "format": "date-time"}
+  }
+}

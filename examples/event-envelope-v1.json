@@ -1,0 +1,17 @@
+{
+  "$schema_file": "schemas/event-envelope-v1.schema.json",
+  "schema": "skrsi.event-envelope.v1",
+  "event_id": "evt-review-finished-001",
+  "event_type": "observation",
+  "occurred_at": "2030-01-01T00:01:00Z",
+  "recorded_at": "2030-01-01T00:01:01Z",
+  "producer": "collector-a",
+  "target_ref": "review-latency@1",
+  "correlation_id": "corr-001",
+  "causation_id": null,
+  "natural_key": "review-001-finished",
+  "payload_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "redaction_class": "public",
+  "policy_revision": "policy-1",
+  "evidence_refs": ["sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]
+}

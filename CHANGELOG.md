@@ -4,6 +4,21 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Card `859124d5`: publish sanitized versioned target, event, evaluation, and
+  feedback handoff contracts with examples, adopter guidance, conformance
+  checks, and pinned documentation CI.
+- Record three explicitly noncanonical SELF naming alternatives while keeping
+  Systematic Evaluation, Learning, and Feedback authoritative.
+- Correct the first independent review findings with immutable target and
+  evaluation v2 schemas, schema-level safety invariants, bounded stop rules,
+  and repository-wide public artifact sanitization.
+- Preserve evaluation v2 unchanged and publish evaluation v3 so PASS rejects
+  null baseline or treatment values across every required metric.
+- Add a standard-library, fail-closed evaluation v2-to-v3 migration with an
+  executable synthetic fixture, exact field mapping, and idempotence tests.
+
 ## [0.1.0] - 2026-09-09
 
 ### Added

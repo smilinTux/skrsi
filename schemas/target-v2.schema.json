@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smilintux.github.io/skrsi/schemas/target-v2.schema.json",
+  "title": "SKRSI target v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "target_id", "revision", "status", "owner", "scope", "objective", "invariants", "metrics", "stop_rules", "expires_at", "rollback"],
+  "properties": {
+    "schema": {"const": "skrsi.target.v2"},
+    "target_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "revision": {"type": "integer", "minimum": 1},
+    "status": {"enum": ["draft", "approved", "active", "paused", "expired", "retired"]},
+    "owner": {"type": "string", "minLength": 1, "maxLength": 128},
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["products", "event_types"],
+      "properties": {
+        "products": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+        "event_types": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}
+      }
+    },
+    "objective": {"type": "string", "minLength": 1, "maxLength": 500},
+    "invariants": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+    "metrics": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+    "stop_rules": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "condition", "action", "owner"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$"},
+          "condition": {"type": "string", "minLength": 1, "maxLength": 500},
+          "action": {"enum": ["pause", "abort", "rollback"]},
+          "owner": {"type": "string", "minLength": 1, "maxLength": 128}
+        }
+      }
+    },
+    "expires_at": {"type": "string", "format": "date-time"},
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trigger", "owner"],
+      "properties": {"trigger": {"type": "string", "minLength": 1}, "owner": {"type": "string", "minLength": 1}}
+    }
+  }
+}

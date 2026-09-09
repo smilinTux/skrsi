@@ -28,3 +28,12 @@ SKRSI is **SK Recursive SELF Improvement**. SELF expands to **Systematic Evaluat
 ## Current implementation
 
 The first-wave implementation currently lives in SKCapstone modules named `skrsi_registry`, `skrsi_collector`, `skrsi_evaluator`, `skrsi_experiment_controller`, `skrsi_estate_adapters`, `skrsi_handoffs`, and `skrsi_runtime`. SKDashboard provides bounded aggregate visibility. Extraction into this repository is a future governed change, not implied by this documentation initialization.
+
+## Public contract boundary
+
+This repository owns portable, versioned data contracts for targets, event
+envelopes, evaluations, and feedback handoffs. It does not provide a scheduler,
+authorization service, model router, deployment controller, or product data
+plane. Adopters validate records before persistence or transport, reject
+unknown schema versions, preserve source bytes and hashes, and keep producer
+and reviewer identities independent.

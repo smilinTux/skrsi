@@ -26,6 +26,15 @@ SELF is the operating loop:
 3. **Learning**: preserve outcomes and lessons as versioned, attributable records.
 4. **Feedback**: route bounded proposals back to the responsible lifecycle agent.
 
+### Alternatives considered
+
+These are noncanonical alternatives retained as naming history. They must not
+replace the canonical expansion above:
+
+- **Structured Evidence, Learning, and Feedback**
+- **Safe Experimentation, Learning, and Feedback**
+- **Sustainable Evaluation, Learning, and Feedback**
+
 ## Honest claims
 
 - SKRSI produces typed observations, evaluations, and proposals. It does not own workflow state or authorization.
@@ -37,6 +46,9 @@ SELF is the operating loop:
 
 - [SOP.md](./SOP.md): architecture, operating model, verification, and rollback.
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md): responsibility and evidence boundaries.
+- [docs/CONTRACTS.md](./docs/CONTRACTS.md): versioned public contract catalog.
+- [docs/ADOPTER-GUIDE.md](./docs/ADOPTER-GUIDE.md): minimal integration path.
+- [docs/CONFORMANCE.md](./docs/CONFORMANCE.md): conformance levels and checks.
 - [SECURITY.md](./SECURITY.md): threat model and private reporting.
 - [CONTRIBUTING.md](./CONTRIBUTING.md): branch, test, and independent review workflow.
 - [CHANGELOG.md](./CHANGELOG.md): dated project changes.

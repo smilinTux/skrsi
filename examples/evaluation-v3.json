@@ -1,0 +1,14 @@
+{
+  "$schema_file": "schemas/evaluation-v3.schema.json",
+  "schema": "skrsi.evaluation.v3",
+  "evaluation_id": "eval-review-latency-001",
+  "target_ref": "review-latency@1",
+  "participants": ["collector-a", "reviewer-b"],
+  "baseline": {"id": "baseline", "sample_size": 30, "window_start": "2029-12-01T00:00:00Z", "window_end": "2029-12-15T00:00:00Z"},
+  "treatment": {"id": "treatment", "sample_size": 30, "window_start": "2029-12-16T00:00:00Z", "window_end": "2029-12-30T00:00:00Z"},
+  "metrics": [{"name": "review_latency_ms", "unit": "ms", "baseline": 120000, "treatment": 90000}],
+  "guardrails": [{"name": "independent_review", "passed": true}],
+  "missingness": [],
+  "outcome": "pass",
+  "evidence_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+}

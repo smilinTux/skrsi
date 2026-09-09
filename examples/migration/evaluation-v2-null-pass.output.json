@@ -1,0 +1,13 @@
+{
+  "baseline": {"id": "baseline", "sample_size": 30, "window_end": "2029-12-15T00:00:00Z", "window_start": "2029-12-01T00:00:00Z"},
+  "evaluation_id": "eval-migration-001",
+  "evidence_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "guardrails": [{"name": "independent_review", "passed": true}],
+  "metrics": [{"baseline": 120000, "name": "review_latency_ms", "treatment": null, "unit": "ms"}],
+  "missingness": ["metrics[0].treatment is null"],
+  "outcome": "inconclusive",
+  "participants": ["collector-a", "reviewer-b"],
+  "schema": "skrsi.evaluation.v3",
+  "target_ref": "review-latency@1",
+  "treatment": {"id": "treatment", "sample_size": 30, "window_end": "2029-12-30T00:00:00Z", "window_start": "2029-12-16T00:00:00Z"}
+}

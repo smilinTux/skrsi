@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smilintux.github.io/skrsi/schemas/event-envelope-v1.schema.json",
+  "title": "SKRSI event envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "event_id", "event_type", "occurred_at", "recorded_at", "producer", "target_ref", "correlation_id", "natural_key", "payload_digest", "redaction_class", "policy_revision", "evidence_refs"],
+  "properties": {
+    "schema": {"const": "skrsi.event-envelope.v1"},
+    "event_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "event_type": {"enum": ["observation", "baseline", "hypothesis", "experiment", "intervention_proposal", "evaluation", "decision", "rollout", "regression", "recovery"]},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "producer": {"type": "string", "minLength": 1, "maxLength": 128},
+    "target_ref": {"type": "string", "pattern": "^[a-z0-9._-]+@[1-9][0-9]*$"},
+    "correlation_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "causation_id": {"type": ["string", "null"], "maxLength": 128},
+    "natural_key": {"type": "string", "minLength": 1, "maxLength": 256},
+    "payload_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "redaction_class": {"enum": ["public", "internal-metadata", "restricted-metadata"]},
+    "policy_revision": {"type": "string", "minLength": 1, "maxLength": 128},
+    "evidence_refs": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}
+  }
+}

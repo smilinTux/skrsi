@@ -1,0 +1,13 @@
+{
+  "$schema_file": "schemas/feedback-handoff-v1.schema.json",
+  "schema": "skrsi.feedback-handoff.v1",
+  "handoff_id": "handoff-review-latency-001",
+  "source_evaluation": "eval-review-latency-001",
+  "sender": "evaluator-b",
+  "recipient_authority": "lifecycle-team",
+  "proposal": "Consider a bounded canary of the reviewed queue change.",
+  "evidence_refs": ["sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"],
+  "requested_action": "consider",
+  "authorization_granted": false,
+  "expires_at": "2030-01-01T00:00:00Z"
+}

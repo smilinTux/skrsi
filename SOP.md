@@ -32,13 +32,15 @@ Every edge has one producer, one consumer, a bounded queue, timeout, retry polic
 
 ## 3. Build
 
-No build is required. This repository is documentation-first. Runtime extraction from SKCapstone requires its own governed card and release.
+No runtime build is required. This repository publishes portable JSON Schema
+contracts and examples. Runtime extraction from SKCapstone requires its own
+governed card and release.
 
 ## 4. Test
 
 ```bash
-python3 ../sk-standards/scripts/docs_check.py --repo . --tier 1
-python3 ../sk-standards/scripts/check_fences.py README.md SOP.md docs/*.md
+python3 -m pip install -r requirements-dev.txt
+python3 -m unittest discover -s tests -v
 git diff --check
 ```
 
@@ -52,7 +54,11 @@ There is no runtime configuration. Consumers use the canonical name and link her
 
 ## 7. API / Reference
 
-No standalone API is published yet. Current runtime APIs live in SKCapstone under the `skrsi_*` modules. Runtime identifiers remain lowercase `skrsi`; this naming change does not migrate schemas or evidence keys.
+The public contract catalog is `docs/CONTRACTS.md`. JSON Schema files live in
+`schemas/`, and valid fixtures live in `examples/`. These contracts define
+portable records, not a network service. Current runtime APIs live in
+SKCapstone under the `skrsi_*` modules. Runtime identifiers remain lowercase
+`skrsi`.
 
 ## 8. Troubleshooting
 
@@ -65,15 +71,15 @@ No standalone API is published yet. Current runtime APIs live in SKCapstone unde
 
 ## 9. Maturity-tier + Version reference
 
-Maturity tier: T0, N/A because this repository handles no key material. Version phase: Incubating v3. Current documentation version: 0.1.0. SKRSI is not a crypto component.
+Maturity tier: T0, N/A because this repository handles no key material. Version phase: Incubating v3. Current documentation and contract version: 0.2.0. SKRSI is not a crypto component.
 
 <!-- docs-evidence
 verified: 2026-09-09
 checks:
   - name: canonical expansion is present
     run: grep -q 'Recursive Systematic Evaluation, Learning, and Feedback Improvement' README.md
-  - name: architecture document exists
-    run: test -f docs/ARCHITECTURE.md
+  - name: public contracts validate
+    run: python3 -m unittest discover -s tests -v
   - name: no runtime package is claimed
     run: test ! -d src
 -->

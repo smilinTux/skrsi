@@ -26,7 +26,9 @@ An implementation may claim one of these cumulative levels:
 - Stop, expiry, rollback, and recovery behavior is tested.
 - No valid SKRSI record grants merge, deployment, credential, or actuation power.
 - Evaluation v2 migration reproduces the executable v2-to-v3 fixture, preserves
-  source bytes, and never invents a PASS or numeric metric value.
+  source bytes, never invents a PASS or numeric metric value, and validates
+  every successful output against constraints loaded from the published v3
+  schema.
 
 ## Required checks
 

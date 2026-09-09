@@ -15,9 +15,9 @@ malformed, nonfinite, or ambiguous values fail with no output record.
 | v2 field | v3 mapping |
 |---|---|
 | `schema` | Replaced with the exact value `skrsi.evaluation.v3`. |
-| `evaluation_id` | Copied unchanged after nonempty-string validation. |
+| `evaluation_id` | Copied unchanged after applying the published three to 128 character pattern. |
 | `target_ref` | Copied unchanged after target and positive revision validation. |
-| `participants` | Copied unchanged after requiring exactly two distinct nonempty identities in producer, evaluator order. |
+| `participants` | Copied unchanged after requiring exactly two distinct identities of one to 128 characters in producer, evaluator order. |
 | `baseline` | Copied unchanged after exact cohort-field, sample-size, and timezone validation. |
 | `treatment` | Copied unchanged after exact cohort-field, sample-size, and timezone validation. |
 | `metrics` | Copied unchanged after exact field, finite-number-or-null, name, and unit validation. |
@@ -41,5 +41,10 @@ cohorts, invalid types, nonfinite numbers, and invalid hashes fail closed.
 Valid non-PASS v2 records retain their outcome and nullable metric values. A
 valid v3 record is returned unchanged, which makes reruns idempotent. Invalid v3
 records fail closed.
+
+The converter loads string, pattern, enum, array-bound, and numeric-bound
+constraints from the published schema selected by the record discriminator.
+Every successful conversion is then validated through that same derived path
+as v3, preventing converter limits from drifting from the public contract.
 
 The executable synthetic pair is under `examples/migration/`.

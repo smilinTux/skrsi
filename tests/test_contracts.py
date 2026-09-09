@@ -195,6 +195,87 @@ class PublicContractTests(unittest.TestCase):
         self.assertNotEqual(first["outcome"], "pass")
         self.assertEqual(migrate(first), first)
 
+    def test_converter_enforces_every_bounded_schema_field(self):
+        source = load_json("examples/migration/evaluation-v2-null-pass.input.json")
+        validator = Draft202012Validator(
+            load_json("schemas/evaluation-v3.schema.json"),
+            format_checker=FormatChecker(),
+        )
+        cases = [
+            ("evaluation_id", "aa", False),
+            ("evaluation_id", "aaa", True),
+            ("evaluation_id", "a" * 128, True),
+            ("evaluation_id", "a" * 129, False),
+            ("target_ref", "target@0", False),
+            ("target_ref", "target@1", True),
+            ("participant", "", False),
+            ("participant", "a", True),
+            ("participant", "a" * 128, True),
+            ("participant", "a" * 129, False),
+            ("participants", ["one"], False),
+            ("participants", ["one", "two"], True),
+            ("participants", ["one", "two", "three"], False),
+            ("sample_size", -1, False),
+            ("sample_size", 0, True),
+            ("metrics", [], False),
+            ("metrics", copy.deepcopy(source["metrics"]), True),
+            ("guardrails", [], False),
+            ("guardrails", copy.deepcopy(source["guardrails"]), True),
+            ("missingness_item", "", False),
+            ("missingness_item", "x", True),
+            ("evidence_sha256", "a" * 63, False),
+            ("evidence_sha256", "a" * 64, True),
+            ("evidence_sha256", "a" * 65, False),
+            ("outcome", "unknown", False),
+            ("window_start", "2026-01-01", False),
+        ]
+        for field, value, accepted in cases:
+            document = copy.deepcopy(source)
+            if field == "participant":
+                document["participants"][0] = value
+            elif field == "sample_size":
+                document["baseline"]["sample_size"] = value
+            elif field == "missingness_item":
+                document["outcome"] = "fail"
+                document["missingness"] = [value]
+            elif field == "window_start":
+                document["baseline"]["window_start"] = value
+            else:
+                document[field] = value
+            detail = len(value) if hasattr(value, "__len__") else value
+            with self.subTest(field=field, boundary=detail):
+                if accepted:
+                    validator.validate(migrate(document))
+                else:
+                    with self.assertRaises(ValueError):
+                        migrate(document)
+
+    def test_every_successful_conversion_validates_against_v3(self):
+        source = load_json("examples/migration/evaluation-v2-null-pass.input.json")
+        validator = Draft202012Validator(
+            load_json("schemas/evaluation-v3.schema.json"),
+            format_checker=FormatChecker(),
+        )
+        corpus = []
+        for outcome in ("pass", "fail", "blocked", "inconclusive", "regression"):
+            document = copy.deepcopy(source)
+            document["outcome"] = outcome
+            if outcome != "pass":
+                document["missingness"] = ["synthetic missing value"]
+            corpus.append(document)
+        for evaluation_id in ("abc", "a" * 128):
+            document = copy.deepcopy(source)
+            document["evaluation_id"] = evaluation_id
+            corpus.append(document)
+        for length in (1, 128):
+            document = copy.deepcopy(source)
+            document["participants"] = ["p" * length, "e" * length]
+            corpus.append(document)
+
+        for index, document in enumerate(corpus):
+            with self.subTest(index=index):
+                validator.validate(migrate(document))
+
 
 if __name__ == "__main__":
     unittest.main()

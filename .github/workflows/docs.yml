@@ -18,6 +18,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
@@ -28,4 +30,4 @@ jobs:
       - name: Validate contracts, examples, and links
         run: python -m unittest discover -s tests -v
       - name: Reject whitespace errors
-        run: git diff --check HEAD^ HEAD
+        run: git diff --check "${{ github.event.pull_request.base.sha || github.event.before }}" HEAD

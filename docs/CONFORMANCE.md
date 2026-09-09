@@ -25,6 +25,8 @@ An implementation may claim one of these cumulative levels:
 - Feedback is proposal-only and passes through the adopter's existing authority.
 - Stop, expiry, rollback, and recovery behavior is tested.
 - No valid SKRSI record grants merge, deployment, credential, or actuation power.
+- Evaluation v2 migration reproduces the executable v2-to-v3 fixture, preserves
+  source bytes, and never invents a PASS or numeric metric value.
 
 ## Required checks
 

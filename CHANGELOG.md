@@ -16,6 +16,8 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
   and repository-wide public artifact sanitization.
 - Preserve evaluation v2 unchanged and publish evaluation v3 so PASS rejects
   null baseline or treatment values across every required metric.
+- Add a standard-library, fail-closed evaluation v2-to-v3 migration with an
+  executable synthetic fixture, exact field mapping, and idempotence tests.
 
 ## [0.1.0] - 2026-09-09
 

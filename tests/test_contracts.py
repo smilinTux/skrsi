@@ -1,6 +1,8 @@
 import copy
 import json
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +10,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
 
 from scripts.validate_public import scan
+from scripts.migrate_evaluation_v2_to_v3 import migrate
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -133,6 +136,64 @@ class PublicContractTests(unittest.TestCase):
         for path in [ROOT / "README.md", *(ROOT / "docs").glob("*.md")]:
             for target in link.findall(path.read_text(encoding="utf-8")):
                 self.assertTrue((path.parent / target).resolve().exists(), f"{path}: {target}")
+
+    def test_v2_to_v3_migration_matches_executable_fixture(self):
+        source = load_json("examples/migration/evaluation-v2-null-pass.input.json")
+        expected = load_json("examples/migration/evaluation-v2-null-pass.output.json")
+        self.assertEqual(migrate(source), expected)
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output.json"
+            subprocess.run(
+                [sys.executable, "scripts/migrate_evaluation_v2_to_v3.py", "examples/migration/evaluation-v2-null-pass.input.json", str(output)],
+                cwd=ROOT,
+                check=True,
+            )
+            self.assertEqual(json.loads(output.read_text(encoding="utf-8")), expected)
+
+    def test_v2_to_v3_maps_every_field_and_null_in_stable_order(self):
+        source = load_json("examples/migration/evaluation-v2-null-pass.input.json")
+        source["metrics"] = [
+            {"name": "quality", "unit": "ratio", "baseline": None, "treatment": 0.9},
+            {"name": "latency", "unit": "ms", "baseline": 10, "treatment": None},
+        ]
+        result = migrate(source)
+        for field in set(source) - {"schema", "outcome", "missingness"}:
+            self.assertEqual(result[field], source[field])
+        self.assertEqual(result["schema"], "skrsi.evaluation.v3")
+        self.assertEqual(result["outcome"], "inconclusive")
+        self.assertEqual(
+            result["missingness"],
+            ["metrics[0].baseline is null", "metrics[1].treatment is null"],
+        )
+
+    def test_v2_to_v3_fails_closed_on_invalid_or_ambiguous_input(self):
+        valid = load_json("examples/migration/evaluation-v2-null-pass.input.json")
+        cases = []
+        extra = copy.deepcopy(valid)
+        extra["unknown"] = True
+        cases.append(extra)
+        failed_guardrail = copy.deepcopy(valid)
+        failed_guardrail["metrics"][0]["treatment"] = 1
+        failed_guardrail["guardrails"][0]["passed"] = False
+        cases.append(failed_guardrail)
+        explicit_missingness = copy.deepcopy(valid)
+        explicit_missingness["metrics"][0]["treatment"] = 1
+        explicit_missingness["missingness"] = ["ambiguous"]
+        cases.append(explicit_missingness)
+        nonfinite = copy.deepcopy(valid)
+        nonfinite["metrics"][0]["treatment"] = float("nan")
+        cases.append(nonfinite)
+        for index, document in enumerate(cases):
+            with self.subTest(index=index):
+                with self.assertRaises(ValueError):
+                    migrate(document)
+
+    def test_v3_migration_is_idempotent_and_never_invents_pass(self):
+        v2 = load_json("examples/migration/evaluation-v2-null-pass.input.json")
+        first = migrate(v2)
+        self.assertNotEqual(first["outcome"], "pass")
+        self.assertEqual(migrate(first), first)
 
 
 if __name__ == "__main__":

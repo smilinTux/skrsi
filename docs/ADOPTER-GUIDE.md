@@ -34,3 +34,9 @@ cannot override a failed guardrail.
 
 Run `python3 -m unittest discover -s tests -v` before adopting or modifying a
 contract.
+
+## Evaluation migration
+
+Existing evaluation v2 records use the deterministic, fail-closed procedure in
+[`MIGRATION-V2-V3.md`](./MIGRATION-V2-V3.md). Do not edit v2 records in place.
+Write the v3 result as a new record and preserve the source bytes and digest.

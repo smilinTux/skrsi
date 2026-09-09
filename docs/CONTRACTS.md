@@ -41,4 +41,5 @@ operational authority.
 
 Evaluation v2 remains immutable for historical verification but is superseded
 by v3 because v2 permits a PASS metric value to be null. New producers and
-consumers must use evaluation v3.
+consumers must use evaluation v3. Existing records migrate through the exact
+[`evaluation v2-to-v3 procedure`](./MIGRATION-V2-V3.md).

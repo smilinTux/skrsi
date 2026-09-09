@@ -5,7 +5,8 @@
 1. Select one registered target and pin its exact target revision.
 2. Emit metadata-only observations in the event envelope.
 3. Compare a declared baseline and treatment using the evaluation contract.
-4. Require an evaluator who differs from the producer.
+4. Encode participants as `[producer, independent evaluator]`; the two values
+   must differ.
 5. Send any accepted recommendation as a feedback handoff to an existing
    authority. A handoff is never permission to merge, deploy, or actuate.
 

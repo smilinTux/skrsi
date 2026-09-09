@@ -41,6 +41,7 @@ governed card and release.
 ```bash
 python3 -m pip install -r requirements-dev.txt
 python3 -m unittest discover -s tests -v
+python3 scripts/validate_public.py .
 git diff --check
 ```
 

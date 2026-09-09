@@ -29,5 +29,7 @@ jobs:
         run: python -m pip install -r requirements-dev.txt
       - name: Validate contracts, examples, and links
         run: python -m unittest discover -s tests -v
+      - name: Reject private public artifacts
+        run: python scripts/validate_public.py .
       - name: Reject whitespace errors
         run: git diff --check "${{ github.event.pull_request.base.sha || github.event.before }}" HEAD

@@ -18,7 +18,8 @@ An implementation may claim one of these cumulative levels:
 ## Lifecycle conformant
 
 - Meets evidence conformance.
-- Producer and independent evaluator identities differ.
+- Producer and independent evaluator identities differ through the ordered,
+  unique evaluation participant tuple.
 - Feedback is proposal-only and passes through the adopter's existing authority.
 - Stop, expiry, rollback, and recovery behavior is tested.
 - No valid SKRSI record grants merge, deployment, credential, or actuation power.
@@ -27,4 +28,5 @@ An implementation may claim one of these cumulative levels:
 
 The repository CI validates each schema with the JSON Schema Draft 2020-12
 meta-schema, validates every public example, checks documentation links, scans
-public artifacts for private path and host patterns, and runs `git diff --check`.
+every shipped UTF-8 public text and configuration artifact including root files
+and dotfiles for private path and host patterns, and runs `git diff --check`.

@@ -7,19 +7,21 @@ record.
 
 | Contract | Schema | Purpose |
 |---|---|---|
-| Target | `schemas/target-v1.schema.json` | Registers a bounded improvement objective, measures, invariants, expiry, and rollback owner. |
+| Target | `schemas/target-v2.schema.json` | Registers a bounded improvement objective, measures, invariants, stop rules, expiry, and rollback owner. |
 | Event envelope | `schemas/event-envelope-v1.schema.json` | Carries attributable metadata, lineage, hashes, and redaction class. |
-| Evaluation | `schemas/evaluation-v1.schema.json` | Records cohort results, quality gates, missingness, and an evidence-bound outcome. |
+| Evaluation | `schemas/evaluation-v2.schema.json` | Records independent participants, cohort results, quality gates, missingness, and an evidence-bound outcome. |
 | Feedback handoff | `schemas/feedback-handoff-v1.schema.json` | Routes a proposal to an existing authority without granting permission to act. |
 
 ## Compatibility
 
-- Additive optional fields may be introduced in a new minor documentation
-  release while the schema identifier stays at v1.
-- Removing a field, changing its type, or weakening an invariant requires a new
-  major schema identifier.
-- Unknown properties fail validation. Extensions belong in a separately
-  versioned contract.
+- Every published schema identifier and file is immutable.
+- Any field addition, removal, type change, constraint change, or invariant
+  change requires a new schema identifier and file, even when the change would
+  otherwise appear additive.
+- Consumers process only explicitly supported exact schema identifiers. There
+  is no same-identifier forward compatibility.
+- Unknown properties fail validation. Extensions belong in a new versioned
+  contract.
 - Timestamps use RFC 3339 UTC values. Digests use lowercase SHA-256 hex.
 - Identifiers are opaque. They must not contain credentials, protected content,
   personal filesystem paths, or private host names.

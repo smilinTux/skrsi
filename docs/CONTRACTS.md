@@ -9,7 +9,7 @@ record.
 |---|---|---|
 | Target | `schemas/target-v2.schema.json` | Registers a bounded improvement objective, measures, invariants, stop rules, expiry, and rollback owner. |
 | Event envelope | `schemas/event-envelope-v1.schema.json` | Carries attributable metadata, lineage, hashes, and redaction class. |
-| Evaluation | `schemas/evaluation-v2.schema.json` | Records independent participants, cohort results, quality gates, missingness, and an evidence-bound outcome. |
+| Evaluation | `schemas/evaluation-v3.schema.json` | Records independent participants, complete PASS metrics, quality gates, missingness, and an evidence-bound outcome. |
 | Feedback handoff | `schemas/feedback-handoff-v1.schema.json` | Routes a proposal to an existing authority without granting permission to act. |
 
 ## Compatibility
@@ -38,3 +38,7 @@ record.
 
 The examples under `examples/` are public synthetic fixtures and have no
 operational authority.
+
+Evaluation v2 remains immutable for historical verification but is superseded
+by v3 because v2 permits a PASS metric value to be null. New producers and
+consumers must use evaluation v3.

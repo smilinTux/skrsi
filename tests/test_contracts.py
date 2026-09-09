@@ -32,7 +32,7 @@ class PublicContractTests(unittest.TestCase):
             Draft202012Validator.check_schema(schema)
             schemas[path.relative_to(ROOT).as_posix()] = schema
 
-        self.assertEqual(len(schemas), 4)
+        self.assertEqual(len(schemas), 5)
         for path in sorted((ROOT / "examples").glob("*.json")):
             instance = json.loads(path.read_text(encoding="utf-8"))
             schema_path = instance.pop("$schema_file")
@@ -42,22 +42,53 @@ class PublicContractTests(unittest.TestCase):
             ).validate(instance)
 
     def test_evaluation_rejects_same_producer_and_evaluator(self):
-        validator, instance = validator_for_example("examples/evaluation-v2.json")
+        validator, instance = validator_for_example("examples/evaluation-v3.json")
         instance["participants"] = ["same-agent", "same-agent"]
         with self.assertRaises(ValidationError):
             validator.validate(instance)
 
     def test_pass_rejects_failed_guardrail(self):
-        validator, instance = validator_for_example("examples/evaluation-v2.json")
+        validator, instance = validator_for_example("examples/evaluation-v3.json")
         instance["guardrails"][0]["passed"] = False
         with self.assertRaises(ValidationError):
             validator.validate(instance)
 
     def test_pass_rejects_explicit_missingness(self):
-        validator, instance = validator_for_example("examples/evaluation-v2.json")
+        validator, instance = validator_for_example("examples/evaluation-v3.json")
         instance["missingness"] = ["treatment sample 12 unavailable"]
         with self.assertRaises(ValidationError):
             validator.validate(instance)
+
+    def test_pass_rejects_null_metric_values_in_any_order(self):
+        validator, original = validator_for_example("examples/evaluation-v3.json")
+        second = {
+            "name": "first_pass_review_rate",
+            "unit": "ratio",
+            "baseline": 0.8,
+            "treatment": 0.9,
+        }
+        for position in (0, 1):
+            for field in ("baseline", "treatment"):
+                instance = copy.deepcopy(original)
+                instance["metrics"].append(copy.deepcopy(second))
+                instance["metrics"][position][field] = None
+                with self.subTest(position=position, field=field):
+                    with self.assertRaises(ValidationError):
+                        validator.validate(instance)
+
+        instance = copy.deepcopy(original)
+        instance["metrics"] = [copy.deepcopy(second), *instance["metrics"]]
+        instance["metrics"][0]["treatment"] = None
+        instance["metrics"][1]["baseline"] = None
+        with self.assertRaises(ValidationError):
+            validator.validate(instance)
+
+        for outcome in ("fail", "blocked", "inconclusive", "regression"):
+            instance = copy.deepcopy(original)
+            instance["outcome"] = outcome
+            instance["metrics"][0]["baseline"] = None
+            with self.subTest(outcome=outcome):
+                validator.validate(instance)
 
     def test_target_requires_bounded_predeclared_stop_rules(self):
         validator, instance = validator_for_example("examples/target-v2.json")

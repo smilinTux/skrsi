@@ -1,6 +1,6 @@
 {
-  "$schema_file": "schemas/evaluation-v2.schema.json",
-  "schema": "skrsi.evaluation.v2",
+  "$schema_file": "schemas/evaluation-v3.schema.json",
+  "schema": "skrsi.evaluation.v3",
   "evaluation_id": "eval-review-latency-001",
   "target_ref": "review-latency@1",
   "participants": ["collector-a", "reviewer-b"],

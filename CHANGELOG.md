@@ -14,6 +14,8 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 - Correct the first independent review findings with immutable target and
   evaluation v2 schemas, schema-level safety invariants, bounded stop rules,
   and repository-wide public artifact sanitization.
+- Preserve evaluation v2 unchanged and publish evaluation v3 so PASS rejects
+  null baseline or treatment values across every required metric.
 
 ## [0.1.0] - 2026-09-09
 

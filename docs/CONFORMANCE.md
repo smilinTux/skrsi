@@ -20,6 +20,8 @@ An implementation may claim one of these cumulative levels:
 - Meets evidence conformance.
 - Producer and independent evaluator identities differ through the ordered,
   unique evaluation participant tuple.
+- A PASS evaluation has numeric baseline and treatment values for every metric,
+  no failed guardrail, and no explicit missingness entry.
 - Feedback is proposal-only and passes through the adopter's existing authority.
 - Stop, expiry, rollback, and recovery behavior is tested.
 - No valid SKRSI record grants merge, deployment, credential, or actuation power.

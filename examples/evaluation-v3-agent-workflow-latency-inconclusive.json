@@ -1,0 +1,26 @@
+{
+  "$schema_file": "schemas/evaluation-v3.schema.json",
+  "schema": "skrsi.evaluation.v3",
+  "evaluation_id": "eval-agent-workflow-latency-001",
+  "target_ref": "agent-workflow-latency@1",
+  "participants": ["collector-a", "reviewer-b"],
+  "baseline": {"id": "baseline", "sample_size": 110, "window_start": "2029-11-01T00:00:00Z", "window_end": "2029-11-15T00:00:00Z"},
+  "treatment": {"id": "treatment", "sample_size": 110, "window_start": "2029-11-16T00:00:00Z", "window_end": "2029-11-30T00:00:00Z"},
+  "metrics": [
+    {"name": "claim_to_complete_ms", "unit": "ms", "baseline": 1584000, "treatment": 1584000},
+    {"name": "review_round_trips", "unit": "1", "baseline": 1, "treatment": 1},
+    {"name": "rework_rate", "unit": "1", "baseline": 0.009, "treatment": 0.009},
+    {"name": "claim_event_coverage_ratio", "unit": "1", "baseline": 0.103, "treatment": 0.103}
+  ],
+  "guardrails": [
+    {"name": "independent_review", "passed": true},
+    {"name": "coverage_floor", "passed": false}
+  ],
+  "missingness": [
+    "claim_event_coverage_ratio is 0.103: 220 of 2131 completed work items carry a claim event, so the latency metrics describe only the instrumented tenth of the population",
+    "the uninstrumented remainder is not assumed to resemble the measured subset, and is not imputed",
+    "blocked_duration was declared in an earlier draft and has no source event; it is absent rather than zero"
+  ],
+  "outcome": "inconclusive",
+  "evidence_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+}

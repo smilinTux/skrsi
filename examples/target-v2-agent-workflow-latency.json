@@ -1,0 +1,47 @@
+{
+  "$schema_file": "schemas/target-v2.schema.json",
+  "schema": "skrsi.target.v2",
+  "target_id": "agent-workflow-latency",
+  "revision": 1,
+  "status": "draft",
+  "owner": "delivery-team",
+  "scope": {
+    "products": ["example-agent-workflow"],
+    "event_types": ["work_item.claimed", "work_item.review_entered", "work_item.completed", "work_item.reopened"]
+  },
+  "objective": "Reduce the time a work item spends between claim and completion, without weakening independent review or hiding how much of the population is actually measured.",
+  "invariants": [
+    "independent review remains required",
+    "no protected payload collection",
+    "a latency metric is reportable only while its measurement coverage is declared alongside it",
+    "an uninstrumented work item is counted as missing, never as fast"
+  ],
+  "metrics": [
+    "claim_to_complete_ms",
+    "review_round_trips",
+    "rework_rate",
+    "claim_event_coverage_ratio"
+  ],
+  "stop_rules": [
+    {
+      "id": "coverage-floor",
+      "condition": "claim_event_coverage_ratio is below the declared floor, so the latency metrics describe a self-selected subset rather than the population.",
+      "action": "abort",
+      "owner": "delivery-team"
+    },
+    {
+      "id": "review-independence-regression",
+      "condition": "Producer and reviewer identities are not distinct for any sampled work item.",
+      "action": "abort",
+      "owner": "delivery-team"
+    },
+    {
+      "id": "rework-regression",
+      "condition": "rework_rate rises while claim_to_complete_ms falls, which is latency bought with quality.",
+      "action": "abort",
+      "owner": "delivery-team"
+    }
+  ],
+  "expires_at": "2030-01-01T00:00:00Z",
+  "rollback": {"trigger": "any invariant failure or stop rule", "owner": "delivery-team"}
+}

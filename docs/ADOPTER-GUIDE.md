@@ -10,6 +10,20 @@
 5. Send any accepted recommendation as a feedback handoff to an existing
    authority. A handoff is never permission to merge, deploy, or actuate.
 
+## Worked example
+
+`examples/target-v2-agent-workflow-latency.json` and
+`examples/evaluation-v3-agent-workflow-latency-inconclusive.json` are a matched
+pair showing the most common way a first target goes wrong: a latency metric
+that looks like a win but is measured on a self-selected fraction of the
+population.
+
+The target declares measurement coverage as a metric in its own right and gives
+it a stop rule, so the latency numbers cannot be read without it. The evaluation
+then reports `inconclusive` rather than `pass`, and names the gap in
+`missingness` instead of imputing the unmeasured remainder. A metric that
+describes a tenth of the population is not a small version of the truth.
+
 ## Storage and replay
 
 Keep an append-only journal or equivalent immutable record, a query index, and

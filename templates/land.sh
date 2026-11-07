@@ -57,18 +57,26 @@ for run in $(gh run list --repo "$repo" --commit "$head" --limit 40 --json datab
 done
 localnote=""
 if [ ! -s "$log.part" ] && [ -n "${LOCAL_TEST_CMD:-}" ]; then
-  ldir="$state/${repo//\//_}-pr$pr-localrun"
+  ldir="$state/${repo//\//_}-pr$pr-${head:0:12}-$$-localrun"  # per PR, head and PID: concurrent lands never share a tree
   gitc=${wt:-.}
-  rm -rf "$ldir"
+  drop_local() { git -C "$gitc" worktree remove --force "$ldir" 2>/dev/null || true; rm -rf "$ldir"; git -C "$gitc" worktree prune 2>/dev/null || true; }
+  trap drop_local EXIT
+  git -C "$gitc" worktree prune 2>/dev/null || true  # a killed earlier land leaves a stale registration
+  drop_local
   git -C "$gitc" cat-file -e "$head^{commit}" 2>/dev/null || git -C "$gitc" fetch -q origin "$head" 2>/dev/null || true
-  if git -C "$gitc" worktree add -q --detach "$ldir" "$head"; then
+  if aerr=$(git -C "$gitc" worktree add -q --detach "$ldir" "$head" 2>&1); then
     lout=$( cd "$ldir" && bash -c "$LOCAL_TEST_CMD" 2>&1 ) && lrc=0 || lrc=$?
-    git -C "$gitc" worktree remove --force "$ldir" || true
+    drop_local
     if [ "$lrc" -eq 0 ]; then
-      { grep -E '^=+ .*[0-9]+ passed.* =+$' <<<"$lout" || true; } | { grep -viE 'failed|error' || true; } | sed 's/$/ (local run)/' >"$log.part"
+      { grep -E '^=+ .*[0-9]+ passed.* =+$' <<<"$lout" || true; } | { grep -E '(^|[^0-9])[1-9][0-9]* passed' || true; } \
+        | { grep -viE 'failed|error' || true; } | sed 's/$/ (local run)/' >"$log.part"
       localnote="local_test_cmd=$LOCAL_TEST_CMD"
     fi
+  else
+    echo "ABORT local run: could not check out $head into $ldir: $aerr"
   fi
+  drop_local
+  trap - EXIT
 fi
 [ -s "$log.part" ] || { rm -f "$log.part"; echo "ABORT no test evidence for $head (a conflicting PR runs no tests)"; exit 5; }
 { echo "repo=$repo pr=$pr commit=$head"; [ -z "$localnote" ] || echo "$localnote"; sort -u "$log.part"; } >"$log"

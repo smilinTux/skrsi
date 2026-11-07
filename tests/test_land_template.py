@@ -107,6 +107,25 @@ class LandTemplate(unittest.TestCase):
         self.assertEqual((proc.returncode, merged), (5, False), proc.stdout)
         self.assertEqual([n for n in self.state_left if "localrun" in n], [])
 
+        proc, merged, *_ = run('echo "=== 0 passed, 3 skipped in 1s ==="')  # zero passed is no evidence
+        self.assertEqual((proc.returncode, merged), (5, False), proc.stdout)
+        proc, merged, *_ = run('echo "=== 10 passed, 3 skipped in 1s ==="')
+        self.assertEqual((proc.returncode, merged), (0, True), proc.stdout + proc.stderr)
+
+        # a stale registration (tree deleted without worktree remove) must not break the next land
+        stale = Path(tempfile.mkdtemp()) / "stale-localrun"
+        subprocess.run(["git", "-C", str(r), "worktree", "add", "-q", "--detach", str(stale), sha], check=True)
+        shutil.rmtree(stale)
+        proc, merged, *_ = run('echo "=== 2 passed in 1s ==="')
+        self.assertEqual((proc.returncode, merged), (0, True), proc.stdout + proc.stderr)
+
+        # an unusable head gives a clear reason, not a silent exit 5
+        proc, merged, *_ = self.run_land(done, log="nothing ran", reviewed="f" * 40, head="f" * 40,
+                                         extra={"LOCAL_TEST_CMD": "true"}, wt=str(self.make_pr_worktree(r, 99)), cwd=str(r))
+        self.assertEqual((proc.returncode, merged), (5, False))
+        self.assertIn("could not check out", proc.stdout)
+        self.assertEqual([n for n in self.state_left if "localrun" in n], [])
+
         proc, merged, *_ = run(None)  # unset: unchanged
         self.assertEqual((proc.returncode, merged), (5, False))
 

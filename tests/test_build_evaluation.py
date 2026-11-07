@@ -426,9 +426,20 @@ class AdoptionLearnings(Inputs):
         _, md = self.run_build()
         self.assertIn("Instrument not described by the base side", md)
         self.assertNotIn("production code: no", md)
+        rec, _ = self.run_build()
+        self.assertIn("cap: the base side does not describe the instrument", rec["missingness"])
+        self.assertFalse(any("does not run production code" in m for m in rec["missingness"]))
+
+    def test_an_instrument_declared_bad_is_reported_as_declared(self):
+        self.base["instrument"] = {"runs_production_code": False, "baselines_named": [],
+                                   "sabotage_tested": False, "dead_arms_reported": False}
+        rec, md = self.run_build()
+        self.assertIn("production code: no", md)
+        self.assertNotIn("not described", md)
+        self.assertIn("cap: instrument does not run production code", rec["missingness"])
 
     def test_a_non_string_cohort_id_is_malformed(self):
-        for bad in (0, False, 7):
+        for bad in (0, False, 7, None):
             self.treat["cohort"]["id"] = bad
             with self.assertRaises(Malformed):
                 self.run_build()

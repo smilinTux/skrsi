@@ -43,7 +43,7 @@ on:
         type: string
         default: ""
       skrsi_ref:
-        description: Ref of smilinTux/skrsi that supplies the scripts. Pin a commit to freeze behaviour.
+        description: Ref of smilinTux/skrsi that supplies the scripts. To freeze behaviour, pin this and the uses ref to one commit.
         type: string
         default: main
       timeout_minutes:

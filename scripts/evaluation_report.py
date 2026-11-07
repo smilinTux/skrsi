@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-def render(rec, table, triggered, unchecked, notes=()) -> str:
+def render(rec, table, triggered, unchecked, notes=(), described=True) -> str:
     """Signal first. The record keeps every missingness entry; the comment folds what repeats on every PR."""
     f = lambda v: "missing" if v is None else f"{v:.6g}"
     names = lambda items: ", ".join(f"`{n}`" for n in items)
@@ -19,7 +19,7 @@ def render(rec, table, triggered, unchecked, notes=()) -> str:
                 f"production code: {'yes' if i['runs_production_code'] else 'no'}; "
                 f"sabotage tested: {'yes' if i['sabotage_tested'] else 'no'}; dead arms reported: "
                 f"{'yes' if i['dead_arms_reported'] else 'no'}; baselines: {', '.join(i['baselines_named']) or 'none named'}."
-                if any(i.values()) else "Instrument not described by the base side."),
+                if described else "Instrument not described by the base side."),
             ""]
     if moved:
         out += ["| metric | baseline | treatment | delta | verdict |", "|---|---|---|---|---|"]

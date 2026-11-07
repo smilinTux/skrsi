@@ -166,8 +166,8 @@ def _side(doc: dict, where: str) -> dict:
 
 def _cohort_id(label, side: dict, fallback: str) -> str:
     """The caller's label (a commit) and the file's cohort id together, so neither hides the other."""
-    own = side.get("cohort", {}).get("id")
-    _need(own is None or isinstance(own, str), "cohort id must be a string")
+    own = side.get("cohort", {}).get("id", "")
+    _need(isinstance(own, str), "cohort id must be a string")
     return "/".join(x for x in (label, own) if x) or fallback
 
 
@@ -240,7 +240,8 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
             (not inst["sabotage_tested"], "cap: instrument has no demonstrated sabotage failure"),
             (not inst["dead_arms_reported"], "cap: instrument does not report dead arms as dead"),
             (not inst["baselines_named"], "cap: no named baselines")]
-    missing += [msg for hit, msg in caps if hit]
+    described = "instrument" in baseline
+    missing += [m for hit, m in caps if hit and (described or "evidence_class" in m)] + ([] if described else ["cap: the base side does not describe the instrument"])
     small = [c["id"] for c in cohorts if c["sample_size"] < min_n]
     if small:
         missing.append(f"cap: sample size below the target minimum of {min_n} in {', '.join(small)}")
@@ -256,7 +257,6 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
         outcome, missing = "inconclusive", ["no metric improved beyond its tolerance"]
     else:
         outcome = "pass"
-    # Cohort ids carry the commits and notes carry known gaps: either one changing is different evidence.
     digest = hashlib.sha256(json.dumps([target, baseline, metrics, evidence_class, [producer, evaluator],
                                         [c["id"] for c in cohorts], list(notes)],
                                        sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -267,7 +267,7 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
            "evidence_sha256": digest}
     validate_v4(rec)
     return rec, render(rec, table, [(s, rules[s], triggered[s]) for s in sorted(triggered)],
-                          [s for s in rules if s not in checked_rules], list(notes))
+                          [s for s in rules if s not in checked_rules], list(notes), described)
 
 
 def main(argv=None) -> int:

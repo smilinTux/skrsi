@@ -84,7 +84,7 @@ to one commit: `skrsi_ref` alone freezes the scripts but not the workflow that c
 
 ### Metrics file
 
-Baseline and metrics share one shape. Rules (`direction`, `tolerance`, `min`, `max`, `stop_rule`, `unit`) and the
+Baseline and metrics share one shape. Rules (`direction`, `tolerance`, `noise`, `min`, `max`, `stop_rule`, `unit`) and the
 `instrument` description are read from the BASE side only, so a PR cannot relax its own bar; the metrics side supplies
 values and invariants. If the PR's file changes a rule, the base rule applies and the change is listed as missingness.
 The workflow also reads the target at the base ref (falling back to the head copy for a target's first PR).
@@ -103,9 +103,20 @@ The workflow also reads the target at the base ref (falling back to the head cop
 - `value: null` is a dead or unmeasured arm. It becomes missingness, never zero.
 - `tolerance` is relative to the baseline value. `min` and `max` are absolute bounds. A metric with a bound triggers
   its `stop_rule` only by breaking the bound; without a bound, any regression beyond tolerance triggers it.
+- `noise` (optional, absolute, same unit as `value`, >= 0) is the instrument's run-to-run noise. A delta whose absolute
+  size is within `noise` is `flat` whatever `tolerance` says, and the v4 metric row carries `noise` so the record shows
+  why. It is a base-side rule like the others: a PR cannot set or widen it. Without it, behaviour is unchanged.
 - `stop_rule` must name a rule id in the target. Stop rules without a binding are listed as not machine-checked.
 - Every target invariant needs a boolean in `invariants`, or it is listed as missingness and the outcome stays
   `inconclusive`.
+
+#### Measuring `noise`
+
+Run the bench at least twice on the same commit and the same data, under realistic load. Set `noise` to the largest
+absolute difference seen between runs, or to 2x the standard deviation over 3 or more runs. Live benches are noisy
+(load-dependent timeouts, approximate nearest-neighbour search): one adopter's 182-query bench moved 0.0055 per query,
+and two runs of the same code differed by about 3 queries (0.016). Per-query granularity (1/N) is a hard lower bound: a
+criterion or `tolerance` smaller than 1/N cannot be met or failed honestly, so never set `noise` below it.
 
 ### Outcome rules
 

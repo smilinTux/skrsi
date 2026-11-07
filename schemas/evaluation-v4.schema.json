@@ -318,6 +318,11 @@
           "type": "number",
           "minimum": 0
         },
+        "noise": {
+          "description": "Absolute run-to-run noise of the instrument, in the metric's unit. A delta within it is flat.",
+          "type": "number",
+          "minimum": 0
+        },
         "min": {
           "type": "number"
         },

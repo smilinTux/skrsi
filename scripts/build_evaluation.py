@@ -8,7 +8,7 @@ Baseline and metrics files share one shape. Rules and the instrument description
 BASE side only, so a PR cannot relax its own bar; the metrics side supplies values and invariants:
   {"cohort": {...}?, "instrument": {...}?, "invariants": {"<target invariant>": bool}?,
    "metrics": {"<name>": {"value": number|null, "unit": str, "direction": "higher"|"lower",
-                          "tolerance": rel>=0?, "min": n?, "max": n?, "stop_rule": id?}}}
+                          "tolerance": rel>=0?, "noise": abs>=0?, "min": n?, "max": n?, "stop_rule": id?}}}
 A null value is a dead or unmeasured arm: it becomes missingness, never zero.
 """
 from __future__ import annotations
@@ -31,7 +31,7 @@ OUTCOMES = ("pass", "fail", "blocked", "inconclusive", "regression")
 INSTRUMENT_KEYS = ("runs_production_code", "baselines_named", "sabotage_tested", "dead_arms_reported")
 COHORT_KEYS = ("id", "sample_size", "window_start", "window_end")
 MIN_SAMPLE = re.compile(r"^min_sample_size: (\d+)\b")  # a target invariant of this exact form states the floor
-RULE_KEYS = ("unit", "direction", "tolerance", "min", "max", "stop_rule")
+RULE_KEYS = ("unit", "direction", "tolerance", "noise", "min", "max", "stop_rule")
 # fullmatch everywhere: `$` would accept a trailing newline
 ID = re.compile(r"[a-z0-9][a-z0-9._-]{2,127}")
 REF = re.compile(r"[a-z0-9._-]+@[1-9][0-9]*")
@@ -74,14 +74,14 @@ def _cohort_ok(c, where: str) -> None:
 
 
 def _verdict(b, t, spec) -> tuple[str, float | None]:
-    """improved, flat, regressed or missing, from the numbers, direction, tolerance and bounds."""
+    """improved, flat, regressed or missing, from the numbers, direction, tolerance, noise and bounds."""
     if t is not None and (t < spec.get("min", t) or t > spec.get("max", t)):
         return "regressed", None if b is None else t - b
     if b is None or t is None:
         return "missing", None
     delta = t - b
     worse = -delta if spec["direction"] == "higher" else delta
-    margin = spec.get("tolerance", 0) * abs(b)
+    margin = max(spec.get("tolerance", 0) * abs(b), spec.get("noise", 0))  # noise: absolute, a floor under tolerance
     return ("regressed" if worse > margin else "improved" if -worse > margin else "flat"), delta
 
 
@@ -111,11 +111,11 @@ def validate_v4(r: dict) -> dict:
     _need(isinstance(m, list) and m, "metrics must be non-empty")
     for x in m:
         req = {"name", "unit", "baseline", "treatment", "direction", "verdict"}
-        _need(isinstance(x, dict) and req <= set(x) <= req | {"tolerance", "min", "max"}, "metric keys")
+        _need(isinstance(x, dict) and req <= set(x) <= req | {"tolerance", "noise", "min", "max"}, "metric keys")
         _need(isinstance(x["name"], str) and isinstance(x["unit"], str), "metric name/unit")
         _need(all(v is None or _num(v) for v in (x["baseline"], x["treatment"])), "metric values: number or null")
-        _need(all(_num(x[k]) for k in ("tolerance", "min", "max") if k in x) and x.get("tolerance", 0) >= 0,
-              "metric rule fields")
+        _need(all(_num(x[k]) for k in ("tolerance", "noise", "min", "max") if k in x)
+              and x.get("tolerance", 0) >= 0 and x.get("noise", 0) >= 0, "metric rule fields")
         _need(x["direction"] in ("higher", "lower", "unknown") and x["verdict"] in
               ("improved", "flat", "regressed", "missing"), "metric direction or verdict")
         want = "missing" if x["direction"] == "unknown" else _verdict(x["baseline"], x["treatment"], x)[0]
@@ -151,14 +151,14 @@ def _side(doc: dict, where: str) -> dict:
     _need(isinstance(doc, dict) and isinstance(doc.get("metrics"), dict), f"{where}: needs a metrics object")
     extra = set(doc) - {"cohort", "instrument", "invariants", "metrics"}
     _need(not extra, f"{where}: unknown keys {sorted(extra)}")
-    allowed = {"value", "unit", "direction", "tolerance", "min", "max", "stop_rule"}
+    allowed = {"value", "unit", "direction", "tolerance", "noise", "min", "max", "stop_rule"}
     for name, s in doc["metrics"].items():
         _need(isinstance(s, dict) and set(s) <= allowed and {"value", "unit", "direction"} <= set(s),
               f"{where}.{name}: needs value, unit, direction; allowed {sorted(allowed)}")
         _need(s["value"] is None or _num(s["value"]), f"{where}.{name}: value must be a number or null")
         _need(isinstance(s["unit"], str) and s["direction"] in ("higher", "lower"), f"{where}.{name}: unit/direction")
-        _need(all(_num(s[k]) for k in ("tolerance", "min", "max") if k in s), f"{where}.{name}: numeric rule fields")
-        _need(s.get("tolerance", 0) >= 0, f"{where}.{name}: tolerance must be >= 0")
+        _need(all(_num(s[k]) for k in ("tolerance", "noise", "min", "max") if k in s), f"{where}.{name}: numeric rule fields")
+        _need(s.get("tolerance", 0) >= 0 and s.get("noise", 0) >= 0, f"{where}.{name}: tolerance and noise must be >= 0")
     inv = doc.get("invariants", {})
     _need(isinstance(inv, dict) and all(isinstance(v, bool) for v in inv.values()), f"{where}: invariants map to bools")
     return doc
@@ -215,7 +215,7 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
                 missing.append(f"{name}: {side} " + ("absent" if (b if side == "baseline" else t) is None else "null (dead or unmeasured arm)"))
         improved |= status == "improved"
         rows.append({"name": name, "unit": spec["unit"], "baseline": bv, "treatment": tv, "direction": spec["direction"],
-                     "verdict": verdict, **{k: spec[k] for k in ("tolerance", "min", "max") if k in spec}})
+                     "verdict": verdict, **{k: spec[k] for k in ("tolerance", "noise", "min", "max") if k in spec}})
         table.append((name, bv, tv, delta, status))
     regressed = any(s == "regressed" or s.startswith("bound violated") for *_, s in table)
     asserted = treat.get("invariants", {})

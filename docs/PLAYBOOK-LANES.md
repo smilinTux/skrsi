@@ -73,6 +73,7 @@ window is capped at `inconclusive` whatever the deltas say.
 | A repo with no CI tests | Land with `LOCAL_TEST_CMD` on the exact reviewed head in a detached worktree, never from the worker's tree | `land.sh` |
 | An evidence PR is not the card | A PR that records evidence for a card (such as an SKRSI evaluation) merges without accepting the card; the board hook runs only for the PR that completes the card | `land.sh` board hook |
 | Docs that contradict the code | A changelog or README line describing removed behaviour is a review defect, class `doc-drift` | Review brief |
+| A criterion below the noise floor | Before writing a numeric acceptance criterion, measure the bench's run-to-run noise; a threshold smaller than the noise or than 1/N cannot be met or failed honestly | Target `noise` field; card template |
 
 ## Adopting SKRSI in a repo
 

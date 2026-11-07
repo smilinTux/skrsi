@@ -168,6 +168,44 @@ class Builder(Inputs):
         self.treat["metrics"]["review_latency_ms"]["value"] = 120000 * 1.06
         self.assertEqual(self.run_build()[0]["outcome"], "regression")
 
+    def test_noise_makes_a_delta_flat_even_when_tolerance_would_call_it(self):
+        lat = self.base["metrics"]["review_latency_ms"]
+        lat["noise"] = 10000
+        self.treat["metrics"]["review_latency_ms"]["value"] = 120000 + 9000  # 7.5 percent: regressed without noise
+        rec, _ = self.run_build()
+        row = next(r for r in rec["metrics"] if r["name"] == "review_latency_ms")
+        self.assertEqual((row["verdict"], row["noise"]), ("flat", 10000))
+        self.assertTrue(accepted_by_schema(rec) and accepted_by_stdlib(rec))
+        self.treat["metrics"]["review_latency_ms"]["value"] = 120000 - 9000  # improved without noise
+        row = next(r for r in self.run_build()[0]["metrics"] if r["name"] == "review_latency_ms")
+        self.assertEqual(row["verdict"], "flat")
+
+    def test_outside_noise_is_unchanged(self):
+        self.base["metrics"]["review_latency_ms"]["noise"] = 1000
+        self.treat["metrics"]["review_latency_ms"]["value"] = 150000
+        rec, _ = self.run_build()
+        self.assertEqual(rec["outcome"], "regression")
+        self.treat["metrics"]["review_latency_ms"]["value"] = 90000
+        row = next(r for r in self.run_build()[0]["metrics"] if r["name"] == "review_latency_ms")
+        self.assertEqual(row["verdict"], "improved")
+
+    def test_absent_noise_changes_nothing(self):
+        rec, _ = self.run_build()
+        self.assertTrue(all("noise" not in r for r in rec["metrics"]))
+
+    def test_negative_noise_is_rejected(self):
+        self.base["metrics"]["review_latency_ms"]["noise"] = -1
+        with self.assertRaises(Malformed):
+            self.run_build()
+
+    def test_a_pr_cannot_set_or_widen_noise(self):
+        self.base["metrics"]["review_latency_ms"]["noise"] = 1000
+        self.treat["metrics"]["review_latency_ms"].update(noise=500000, value=150000)
+        rec, _ = self.run_build()
+        row = next(r for r in rec["metrics"] if r["name"] == "review_latency_ms")
+        self.assertEqual((row["verdict"], row["noise"]), ("regressed", 1000))
+        self.assertTrue(any("changes the rules" in m for m in rec["missingness"]))
+
     def test_bound_violation_is_a_regression_even_when_better_than_baseline(self):
         self.base["metrics"]["first_pass_review_rate"]["value"] = 0.1
         self.treat["metrics"]["first_pass_review_rate"]["value"] = 0.3

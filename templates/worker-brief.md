@@ -43,6 +43,7 @@ report. A fixture may be wrong: say so with reasoning, and regenerate it through
 2. Baselines must be fair, not strawmen. For a lexical baseline, grep per token, not for the whole phrase.
 3. A dead arm (crashed, empty, unreachable) reports `dead`, never `0`. Missing is explicit missingness.
 4. Declare the evidence class: `synthetic`, `live_self_retrieval` or `live_labelled`. Synthetic never supports pass.
+5. If a card criterion is smaller than the bench's measured run-to-run noise (or 1/N), report that instead of chasing it.
 
 ## Report (under 200 words)
 PR number, head SHA, tests and counts, each criterion met / not met / needs live, and any discrepancy.

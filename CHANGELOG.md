@@ -18,6 +18,7 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ### Added
 
+- Optional per-metric `noise` on the base side of a metrics file: a delta within it is `flat` regardless of tolerance; recorded in the v4 metric row. Adopter guide, playbook pitfall and worker brief updated.
 - `docs/CASE-STUDY-SKMEMORY-RETRIEVAL.md`, adopter guidance on getting signal (per-class metrics, margin metrics, relative
   bench paths, live evidence) and `build_evaluation.py --note`.
 - Review rounds are recorded as `review_round` links; build telemetry reports review metrics as missing unless every round is recorded and a target can state `min_sample_size`.

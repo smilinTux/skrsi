@@ -1,0 +1,7 @@
+{
+  "cohort": {"id": "main-at-base", "sample_size": 30, "window_start": "2029-12-01T00:00:00Z", "window_end": "2029-12-15T00:00:00Z"},
+  "metrics": {
+    "review_latency_ms": {"value": 120000, "unit": "ms", "direction": "lower"},
+    "first_pass_review_rate": {"value": 0.8, "unit": "ratio", "direction": "higher"}
+  }
+}

@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""Build a validated skrsi.evaluation.v4 record from a target, a baseline and metrics.
+
+Stdlib only. Exit 0 for every outcome (a regression is a normal result), exit 2 only
+when its own input is malformed. It records evidence and proposes; it never approves.
+
+Baseline and metrics files share one shape (the metrics side carries the rules):
+  {"cohort": {...}?, "instrument": {...}?, "invariants": {"<target invariant>": bool}?,
+   "metrics": {"<name>": {"value": number|null, "unit": str, "direction": "higher"|"lower",
+                          "tolerance": rel>=0?, "min": n?, "max": n?, "stop_rule": id?}}}
+A null value is a dead or unmeasured arm: it becomes missingness, never zero.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import math
+import re
+import sys
+from datetime import datetime, timezone
+
+SCHEMA = "skrsi.evaluation.v4"
+CLASSES = ("synthetic", "live_self_retrieval", "live_labelled")
+OUTCOMES = ("pass", "fail", "blocked", "inconclusive", "regression")
+INSTRUMENT_KEYS = ("runs_production_code", "baselines_named", "sabotage_tested", "dead_arms_reported")
+COHORT_KEYS = ("id", "sample_size", "window_start", "window_end")
+ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,127}$")
+REF = re.compile(r"^[a-z0-9._-]+@[1-9][0-9]*$")
+TS = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$")
+SHA = re.compile(r"^[0-9a-f]{64}$")
+
+
+class Malformed(ValueError):
+    """The input or the produced record is not valid."""
+
+
+def _num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _need(ok: bool, msg: str) -> None:
+    if not ok:
+        raise Malformed(msg)
+
+
+def _str(v, lo=1, hi=128) -> bool:
+    return isinstance(v, str) and lo <= len(v) <= hi
+
+
+def _cohort_ok(c, where: str) -> None:
+    _need(isinstance(c, dict) and set(c) == set(COHORT_KEYS), f"{where}: cohort keys must be {COHORT_KEYS}")
+    _need(isinstance(c["id"], str) and isinstance(c["sample_size"], int) and not isinstance(c["sample_size"], bool)
+          and c["sample_size"] >= 0, f"{where}: bad id or sample_size")
+    _need(all(isinstance(c[k], str) and TS.match(c[k]) for k in ("window_start", "window_end")), f"{where}: bad window")
+
+
+def _instrument_ok(i) -> None:
+    _need(isinstance(i, dict) and set(i) == set(INSTRUMENT_KEYS), f"instrument keys must be {INSTRUMENT_KEYS}")
+    _need(all(isinstance(i[k], bool) for k in ("runs_production_code", "sabotage_tested", "dead_arms_reported")),
+          "instrument flags must be booleans")
+    b = i["baselines_named"]
+    _need(isinstance(b, list) and len(set(b)) == len(b) and all(_str(x) for x in b), "baselines_named: unique strings")
+
+
+def validate_v4(r: dict) -> dict:
+    """Stdlib mirror of schemas/evaluation-v4.schema.json, including the pass cap. Returns r."""
+    _need(isinstance(r, dict), "record must be an object")
+    keys = {"schema", "evaluation_id", "target_ref", "participants", "baseline", "treatment", "metrics",
+            "guardrails", "missingness", "evidence_class", "instrument", "outcome", "evidence_sha256"}
+    _need(set(r) == keys, f"record keys must be exactly {sorted(keys)}")
+    _need(r["schema"] == SCHEMA, "schema const")
+    _need(isinstance(r["evaluation_id"], str) and ID.match(r["evaluation_id"]), "evaluation_id pattern")
+    _need(isinstance(r["target_ref"], str) and REF.match(r["target_ref"]), "target_ref pattern")
+    p = r["participants"]
+    _need(isinstance(p, list) and len(p) == 2 and all(_str(x) for x in p) and p[0] != p[1],
+          "participants must be [producer, evaluator], distinct")
+    _cohort_ok(r["baseline"], "baseline")
+    _cohort_ok(r["treatment"], "treatment")
+    m = r["metrics"]
+    _need(isinstance(m, list) and m, "metrics must be non-empty")
+    for x in m:
+        _need(isinstance(x, dict) and set(x) == {"name", "unit", "baseline", "treatment"}, "metric keys")
+        _need(isinstance(x["name"], str) and isinstance(x["unit"], str), "metric name/unit")
+        _need(all(v is None or _num(v) for v in (x["baseline"], x["treatment"])), "metric values: number or null")
+    g = r["guardrails"]
+    _need(isinstance(g, list) and g, "guardrails must be non-empty")
+    _need(all(isinstance(x, dict) and set(x) == {"name", "passed"} and isinstance(x["name"], str)
+              and isinstance(x["passed"], bool) for x in g), "guardrail shape")
+    _need(isinstance(r["missingness"], list) and all(_str(x, 1, 10**6) for x in r["missingness"]), "missingness")
+    _need(r["evidence_class"] in CLASSES, "evidence_class")
+    _instrument_ok(r["instrument"])
+    _need(r["outcome"] in OUTCOMES, "outcome")
+    _need(isinstance(r["evidence_sha256"], str) and SHA.match(r["evidence_sha256"]), "evidence_sha256")
+    if r["outcome"] == "pass":
+        _need(r["evidence_class"] != "synthetic", "pass is impossible with evidence_class synthetic")
+        _need(r["instrument"]["runs_production_code"], "pass is impossible when runs_production_code is false")
+        _need(all(x["passed"] for x in g) and not r["missingness"], "pass needs passed guardrails, no missingness")
+        _need(all(x["baseline"] is not None and x["treatment"] is not None for x in m), "pass needs numeric metrics")
+    return r
+
+
+def _load(path: str) -> dict:
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _side(doc: dict, where: str) -> dict:
+    _need(isinstance(doc, dict) and isinstance(doc.get("metrics"), dict), f"{where}: needs a metrics object")
+    extra = set(doc) - {"cohort", "instrument", "invariants", "metrics"}
+    _need(not extra, f"{where}: unknown keys {sorted(extra)}")
+    allowed = {"value", "unit", "direction", "tolerance", "min", "max", "stop_rule"}
+    for name, s in doc["metrics"].items():
+        _need(isinstance(s, dict) and set(s) <= allowed and {"value", "unit", "direction"} <= set(s),
+              f"{where}.{name}: needs value, unit, direction; allowed {sorted(allowed)}")
+        _need(s["value"] is None or _num(s["value"]), f"{where}.{name}: value must be a number or null")
+        _need(isinstance(s["unit"], str) and s["direction"] in ("higher", "lower"), f"{where}.{name}: unit/direction")
+        _need(all(_num(s[k]) for k in ("tolerance", "min", "max") if k in s), f"{where}.{name}: numeric rule fields")
+        _need(s.get("tolerance", 0) >= 0, f"{where}.{name}: tolerance must be >= 0")
+    inv = doc.get("invariants", {})
+    _need(isinstance(inv, dict) and all(isinstance(v, bool) for v in inv.values()), f"{where}: invariants map to bools")
+    return doc
+
+
+def _judge(b, t, spec) -> tuple[str, float | None]:
+    if b is None or t is None:
+        return "missing", None
+    delta = t - b
+    worse = -delta if spec["direction"] == "higher" else delta
+    margin = spec.get("tolerance", 0) * abs(b)
+    return ("regressed" if worse > margin else "improved" if -worse > margin else "flat"), delta
+
+
+def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now,
+          baseline_id="baseline", treatment_id="treatment") -> tuple[dict, str]:
+    _need(isinstance(target, dict) and target.get("schema") == "skrsi.target.v2", "target must be skrsi.target.v2")
+    _need(ID.match(str(target.get("target_id", ""))) and isinstance(target.get("revision"), int), "target id/revision")
+    _need(_str(producer) and _str(evaluator) and producer != evaluator, "participants must be two distinct non-empty names")
+    _need(evidence_class in CLASSES, f"evidence_class must be one of {CLASSES}")
+    base, treat = _side(baseline, "baseline"), _side(metrics, "metrics")
+    rules = {r["id"]: r for r in target["stop_rules"]}
+    inst = metrics.get("instrument", {k: ([] if k == "baselines_named" else False) for k in INSTRUMENT_KEYS})
+    _instrument_ok(inst)
+    default = {"id": "", "sample_size": 0, "window_start": now, "window_end": now}
+    cohorts = [{**default, "id": cid, **side.get("cohort", {})} for cid, side in
+               ((baseline_id, base), (treatment_id, treat))]
+    rows, table, missing, triggered, bound_rules, improved = [], [], [], {}, set(), False
+    for name in target["metrics"]:
+        b, t = base["metrics"].get(name), treat["metrics"].get(name)
+        spec = t or b
+        if spec is None:
+            rows.append({"name": name, "unit": "unknown", "baseline": None, "treatment": None})
+            table.append((name, None, None, None, "missing"))
+            missing.append(f"{name}: absent from baseline and metrics")
+            continue
+        _need(b is None or t is None or b["direction"] == t["direction"], f"{name}: direction differs between sides")
+        bv, tv = (b or {}).get("value"), (t or {}).get("value")
+        status, delta = _judge(bv, tv, spec)
+        hit = status == "regressed"
+        if tv is not None and ((("min" in spec) and tv < spec["min"]) or (("max" in spec) and tv > spec["max"])):
+            hit, status = True, "bound violated"
+        sid = spec.get("stop_rule")
+        if sid:
+            _need(sid in rules, f"{name}: stop_rule {sid!r} is not in the target")
+            bound_rules.add(sid)
+            if hit:
+                triggered[sid] = name
+        for side, v in (("baseline", bv), ("treatment", tv)):
+            if v is None:
+                missing.append(f"{name}: {side} " + ("absent" if (b if side == "baseline" else t) is None else "null (dead or unmeasured arm)"))
+        improved |= status == "improved"
+        rows.append({"name": name, "unit": spec["unit"], "baseline": bv, "treatment": tv})
+        table.append((name, bv, tv, delta, status))
+    regressed = any(s in ("regressed", "bound violated") for *_, s in table)
+    asserted = treat.get("invariants", {})
+    unknown = set(asserted) - set(target["invariants"])
+    _need(not unknown, f"invariants not in target: {sorted(unknown)}")
+    guards = [{"name": "independent_evaluator", "passed": True}]
+    for inv in target["invariants"]:
+        if inv in asserted:
+            guards.append({"name": f"invariant:{inv}", "passed": asserted[inv]})
+        else:
+            missing.append(f"invariant not asserted by the bench: {inv}")
+    for sid in sorted(bound_rules):
+        guards.append({"name": f"stop_rule:{sid}", "passed": sid not in triggered})
+    caps = [(evidence_class == "synthetic", "cap: evidence_class synthetic cannot support pass"),
+            (not inst["runs_production_code"], "cap: instrument does not run production code"),
+            (not inst["sabotage_tested"], "cap: instrument has no demonstrated sabotage failure"),
+            (not inst["dead_arms_reported"], "cap: instrument does not report dead arms as dead"),
+            (not inst["baselines_named"], "cap: no named baselines")]
+    missing += [msg for hit, msg in caps if hit]
+    if regressed:
+        outcome = "regression"
+    elif not all(g["passed"] for g in guards):
+        outcome = "fail"
+    elif missing:
+        outcome = "inconclusive"
+    elif not improved:
+        outcome, missing = "inconclusive", ["no metric improved beyond its tolerance"]
+    else:
+        outcome = "pass"
+    digest = hashlib.sha256(json.dumps([target, baseline, metrics, evidence_class, [producer, evaluator]],
+                                       sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    rec = {"schema": SCHEMA, "evaluation_id": f"eval-{target['target_id']}-{digest[:12]}"[:128],
+           "target_ref": f"{target['target_id']}@{target['revision']}", "participants": [producer, evaluator],
+           "baseline": cohorts[0], "treatment": cohorts[1], "metrics": rows, "guardrails": guards,
+           "missingness": missing, "evidence_class": evidence_class, "instrument": inst, "outcome": outcome,
+           "evidence_sha256": digest}
+    validate_v4(rec)
+    return rec, _markdown(rec, table, [(s, rules[s], triggered[s]) for s in sorted(triggered)],
+                          [s for s in rules if s not in bound_rules])
+
+
+def _markdown(rec, table, triggered, unchecked) -> str:
+    f = lambda v: "missing" if v is None else f"{v:.6g}"
+    i = rec["instrument"]
+    out = [f"### SKRSI evaluation: **{rec['outcome']}** (`{rec['target_ref']}`)", "",
+           f"Evidence class `{rec['evidence_class']}`; production code: {'yes' if i['runs_production_code'] else 'no'}; "
+           f"sabotage tested: {'yes' if i['sabotage_tested'] else 'no'}; dead arms reported: "
+           f"{'yes' if i['dead_arms_reported'] else 'no'}; baselines: {', '.join(i['baselines_named']) or 'none named'}.",
+           "", "| metric | baseline | treatment | delta | verdict |", "|---|---|---|---|---|"]
+    out += [f"| {n} | {f(b)} | {f(t)} | {f(d)} | {s} |" for n, b, t, d, s in table]
+    for sid, rule, metric in triggered:
+        out.append(f"\nStop rule `{sid}` triggered by `{metric}`: proposed action `{rule['action']}`, owner {rule['owner']}.")
+    if unchecked:
+        out.append("\nStop rules not machine-checked: " + ", ".join(f"`{s}`" for s in unchecked) + ".")
+    if rec["missingness"]:
+        out += ["", "Missing or capped:"] + [f"- {m}" for m in rec["missingness"]]
+    out.append("\nAdvisory evidence only. It does not gate, approve or merge anything.")
+    return "\n".join(out) + "\n"
+
+
+def main(argv=None) -> int:
+    a = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    for flag in ("target", "baseline", "metrics", "producer", "evaluator", "evidence-class", "out", "md"):
+        a.add_argument("--" + flag, required=flag in ("target", "baseline", "metrics", "producer", "evaluator", "evidence-class", "out"))
+    a.add_argument("--now", default=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    a.add_argument("--baseline-id", default="baseline")
+    a.add_argument("--treatment-id", default="treatment")
+    args = a.parse_args(argv)
+    try:
+        rec, md = build(_load(args.target), _load(args.baseline), _load(args.metrics), producer=args.producer,
+                        evaluator=args.evaluator, evidence_class=args.evidence_class, now=args.now,
+                        baseline_id=args.baseline_id, treatment_id=args.treatment_id)
+        with open(args.out, "w", encoding="utf-8") as fh:
+            json.dump(rec, fh, indent=2, sort_keys=True)
+            fh.write("\n")
+        if args.md:
+            with open(args.md, "w", encoding="utf-8") as fh:
+                fh.write(md)
+    except (Malformed, OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"build_evaluation: malformed input: {exc}", file=sys.stderr)
+        return 2
+    print(f"outcome={rec['outcome']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

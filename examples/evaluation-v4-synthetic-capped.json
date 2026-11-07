@@ -1,0 +1,68 @@
+{
+  "$schema_file": "schemas/evaluation-v4.schema.json",
+  "baseline": {
+    "id": "main-at-base",
+    "sample_size": 30,
+    "window_end": "2029-12-15T00:00:00Z",
+    "window_start": "2029-12-01T00:00:00Z"
+  },
+  "evaluation_id": "eval-review-latency-4818cb5918a4",
+  "evidence_class": "synthetic",
+  "evidence_sha256": "4818cb5918a40b4344882d854f3291908a276bb41a871d27ff88dc07899416c2",
+  "guardrails": [
+    {
+      "name": "independent_evaluator",
+      "passed": true
+    },
+    {
+      "name": "invariant:independent review remains required",
+      "passed": true
+    },
+    {
+      "name": "invariant:no protected payload collection",
+      "passed": true
+    },
+    {
+      "name": "stop_rule:quality-regression",
+      "passed": true
+    }
+  ],
+  "instrument": {
+    "baselines_named": [
+      "main-at-base"
+    ],
+    "dead_arms_reported": true,
+    "runs_production_code": true,
+    "sabotage_tested": true
+  },
+  "metrics": [
+    {
+      "baseline": 120000,
+      "name": "review_latency_ms",
+      "treatment": 90000,
+      "unit": "ms"
+    },
+    {
+      "baseline": 0.8,
+      "name": "first_pass_review_rate",
+      "treatment": 0.9,
+      "unit": "ratio"
+    }
+  ],
+  "missingness": [
+    "cap: evidence_class synthetic cannot support pass"
+  ],
+  "outcome": "inconclusive",
+  "participants": [
+    "collector-a",
+    "reviewer-b"
+  ],
+  "schema": "skrsi.evaluation.v4",
+  "target_ref": "review-latency@1",
+  "treatment": {
+    "id": "pr-head",
+    "sample_size": 30,
+    "window_end": "2029-12-30T00:00:00Z",
+    "window_start": "2029-12-16T00:00:00Z"
+  }
+}

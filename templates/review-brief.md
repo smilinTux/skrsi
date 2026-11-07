@@ -27,5 +27,5 @@ You did not write this code. Decide whether it should merge. Be adversarial but 
 ## Verdict (under 150 words)
 First line exactly `VERDICT: PASS` or `VERDICT: FAIL`, then a line `ROUND: <pr> <head-sha> PASS|FAIL <class,class>`
 (classes from: privacy, data-loss, false-close, non-hermetic-test, instrument-validity, concurrency, conflict-rebase,
-wrong-default, style; none for PASS), then the head SHA, blocking defects with file:line and a failure
+wrong-default, doc-drift, style; none for PASS), then the head SHA, blocking defects with file:line and a failure
 scenario, non-blocking notes last. Do not merge, push, comment, or touch the board.

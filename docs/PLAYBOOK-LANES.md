@@ -41,7 +41,7 @@ coord link <card> review_round "<pr> <head-sha> PASS|FAIL <class,class>"
 ```
 
 Defect classes are an allowlist: `privacy`, `data-loss`, `false-close`, `non-hermetic-test`, `instrument-validity`,
-`concurrency`, `conflict-rebase`, `wrong-default`, `style`. A PASS round carries no class. The reviewer's last line
+`concurrency`, `conflict-rebase`, `wrong-default`, `doc-drift`, `style`. A PASS round carries no class. The reviewer's last line
 (`ROUND: ...` in the review brief) is exactly this value, so the orchestrator records it verbatim; `land.sh` records the
 final PASS round through `LAND_ROUND_CMD`. A different board can use its own command, the format is what matters.
 
@@ -70,6 +70,9 @@ window is capped at `inconclusive` whatever the deltas say.
 | Rule-only classifiers must not destroy | A classifier with no positive store evidence may only propose; deletes, closes and supersedes need evidence | Worker and review briefs |
 | Globs delete the wrong thing | Cleanup removes exact paths only | Briefs, `land.sh` |
 | Uncommitted work is not saved | Commit before the long verification, never gate a commit on a background job | Worker brief |
+| A repo with no CI tests | Land with `LOCAL_TEST_CMD` on the exact reviewed head in a detached worktree, never from the worker's tree | `land.sh` |
+| An evidence PR is not the card | A PR that records evidence for a card (such as an SKRSI evaluation) merges without accepting the card; the board hook runs only for the PR that completes the card | `land.sh` board hook |
+| Docs that contradict the code | A changelog or README line describing removed behaviour is a review defect, class `doc-drift` | Review brief |
 
 ## Adopting SKRSI in a repo
 

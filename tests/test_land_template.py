@@ -24,7 +24,7 @@ jq -r "$expr" "$f"
 
 
 class LandTemplate(unittest.TestCase):
-    def run_land(self, rollup, head="abc", log="== 12 passed in 3s ==", reviewed="abc"):
+    def run_land(self, rollup, head="abc", log="== 12 passed in 3s ==", reviewed="abc", extra=None, wt=None, cwd=None):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
             (d / "view.json").write_text(json.dumps({"headRefOid": head, "statusCheckRollup": rollup}))
@@ -37,12 +37,14 @@ class LandTemplate(unittest.TestCase):
             env = {**os.environ, "PATH": f"{gh.parent}:{os.environ['PATH']}", "FAKE_DIR": str(d),
                    "LANE_STATE_DIR": str(d / "state"), "MAX_WAIT_POLLS": "2", "POLL_SECONDS": "0",
                    "LAND_ROUND_CMD": f'echo "$LAND_ROUND" > "{d}/round"',
-                   "LAND_ACCEPT_CMD": f'echo "$LAND_MERGED" > "{d}/accepted"'}
-            proc = subprocess.run(["bash", str(ROOT / "templates/land.sh"), "o/r", "7", reviewed],
-                                  env=env, capture_output=True, text=True)
+                   "LAND_ACCEPT_CMD": f'echo "$LAND_MERGED" > "{d}/accepted"', **(extra or {})}
+            proc = subprocess.run(["bash", str(ROOT / "templates/land.sh"), "o/r", "7", reviewed, *([wt] if wt else [])],
+                                  env=env, capture_output=True, text=True, cwd=cwd)
             calls = (d / "calls").read_text() if (d / "calls").exists() else ""
             self.merge_call = next((c for c in calls.splitlines() if c.startswith("pr merge")), "")
             self.round = (d / "round").read_text().strip() if (d / "round").exists() else None
+            self.evidence = next((p.read_text() for p in (d / "state").glob("*-tests.log")), "")
+            self.state_left = sorted(p.name for p in (d / "state").iterdir()) if (d / "state").exists() else []
             return proc, (d / "merged").exists(), (d / "accepted").exists(), (d / "state").exists()
 
     @unittest.skipUnless(shutil.which("jq"), "jq needed to exercise the real status expression")
@@ -66,6 +68,47 @@ class LandTemplate(unittest.TestCase):
 
         proc, merged, *_ = self.run_land(done, head="moved")
         self.assertEqual((proc.returncode, merged), (2, False))
+
+    def make_repo(self):
+        r = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, r, True)
+        g = lambda *a: subprocess.run(["git", "-C", str(r), *a], check=True, capture_output=True, text=True).stdout.strip()
+        g("init", "-q")
+        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x")
+        return r, g("rev-parse", "HEAD")
+
+    def make_pr_worktree(self, r, n):
+        w = r.parent / f"{r.name}-pr{n}"
+        subprocess.run(["git", "-C", str(r), "worktree", "add", "-q", "-b", f"pr{n}", str(w)], check=True)
+        self.addCleanup(shutil.rmtree, w, True)
+        return w
+
+    @unittest.skipUnless(shutil.which("jq"), "jq needed")
+    def test_local_evidence(self):
+        done = [{"status": "COMPLETED", "conclusion": "SUCCESS"}]
+        r, sha = self.make_repo()
+        cmd = 'test ! -e untracked-edit && echo "=== 4 passed in 1s ==="'
+        def run(c):
+            w = self.make_pr_worktree(r, next(self.n))
+            (w / "untracked-edit").write_text("worker edit")  # must not leak into the detached checkout
+            return self.run_land(done, log="nothing ran", reviewed=sha, head=sha,
+                                 extra={"LOCAL_TEST_CMD": c} if c else None, wt=str(w), cwd=str(r))
+        self.n = iter(range(100))
+        proc, merged, *_ = run(cmd)
+        self.assertEqual((proc.returncode, merged), (0, True), proc.stdout + proc.stderr)
+        self.assertIn("4 passed in 1s ===" + " (local run)", self.evidence)
+        self.assertIn("local_test_cmd=", self.evidence)
+        self.assertEqual([n for n in self.state_left if "localrun" in n], [])  # detached worktree removed
+        self.assertEqual(subprocess.run(["git", "-C", str(r), "worktree", "list"], capture_output=True, text=True).stdout.count("\n"), 1)  # only the main repo remains
+
+        proc, merged, *_ = run('echo "=== 1 failed, 3 passed in 1s ==="; exit 1')
+        self.assertEqual((proc.returncode, merged), (5, False), proc.stdout)
+        proc, merged, *_ = run('echo "=== 1 failed, 3 passed in 1s ==="')  # failed line refused even on exit 0
+        self.assertEqual((proc.returncode, merged), (5, False), proc.stdout)
+        self.assertEqual([n for n in self.state_left if "localrun" in n], [])
+
+        proc, merged, *_ = run(None)  # unset: unchanged
+        self.assertEqual((proc.returncode, merged), (5, False))
 
 
 if __name__ == "__main__":

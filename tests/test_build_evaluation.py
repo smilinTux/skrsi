@@ -288,7 +288,176 @@ class Hygiene(unittest.TestCase):
                 names = [a.name for a in node.names] if isinstance(node, ast.Import) else \
                     [node.module or ""] if isinstance(node, ast.ImportFrom) and node.level == 0 else []
                 for name in names:
-                    self.assertIn(name.split(".")[0], sys.stdlib_module_names, f"{path.name}: {name}")
+                    siblings = {p.stem for p in path.parent.glob("*.py")}  # each is held to these same checks
+                    self.assertIn(name.split(".")[0], {*sys.stdlib_module_names, *siblings}, f"{path.name}: {name}")
+
+
+class AdoptionLearnings(Inputs):
+    """Defects and blind spots found by the first real adopter, skmemory-retrieval."""
+
+    def test_stop_rule_guardrail_is_not_passed_when_its_metric_is_unmeasured(self):
+        self.treat["metrics"]["first_pass_review_rate"]["value"] = None  # a dead arm cannot clear a stop rule
+        rec, md = self.run_build()
+        self.assertNotIn("stop_rule:quality-regression", [g["name"] for g in rec["guardrails"]])
+        self.assertTrue(any("quality-regression" in m and "not evaluated" in m for m in rec["missingness"]))
+        self.assertIn("not machine-checked", md)
+        self.assertIn("`quality-regression`", md)
+        self.assertEqual(rec["outcome"], "inconclusive")
+
+    def test_a_crashed_treatment_bench_does_not_clear_a_stop_rule(self):
+        self.treat = {"metrics": {}}
+        rec, _ = self.run_build()
+        self.assertNotIn("stop_rule:quality-regression", [g["name"] for g in rec["guardrails"]])
+
+    def test_stop_rule_is_not_passed_while_one_of_its_metrics_is_unmeasured(self):
+        for side, value in ((self.base, 10.0), (self.treat, None)):
+            side["metrics"]["review_latency_ms"].update(stop_rule="quality-regression", value=value)
+        rec, _ = self.run_build()
+        self.assertNotIn("stop_rule:quality-regression", [g["name"] for g in rec["guardrails"]])
+
+    def test_a_triggered_stop_rule_still_fails_when_another_of_its_metrics_is_unmeasured(self):
+        for side, value in ((self.base, 10.0), (self.treat, None)):
+            side["metrics"]["review_latency_ms"].update(stop_rule="quality-regression", value=value)
+        self.treat["metrics"]["first_pass_review_rate"]["value"] = 0.1
+        rec, _ = self.run_build()
+        self.assertIn({"name": "stop_rule:quality-regression", "passed": False}, rec["guardrails"])
+        self.assertEqual(rec["outcome"], "regression")
+
+    def test_same_numbers_at_different_commits_are_different_evidence(self):
+        a, _ = self.run_build(baseline_id="base-aaaaaaa", treatment_id="head-bbbbbbb")
+        b, _ = self.run_build(baseline_id="base-ccccccc", treatment_id="head-ddddddd")
+        self.assertNotEqual(a["evidence_sha256"], b["evidence_sha256"])
+        self.assertNotEqual(a["evaluation_id"], b["evaluation_id"])
+
+    def test_commit_label_is_kept_alongside_the_cohort_id_of_the_file(self):
+        rec, md = self.run_build(baseline_id="base-aaaaaaa", treatment_id="head-bbbbbbb")
+        self.assertEqual(rec["baseline"]["id"], f"base-aaaaaaa/{self.base['cohort']['id']}")
+        self.assertEqual(rec["treatment"]["id"], f"head-bbbbbbb/{self.treat['cohort']['id']}")
+        self.assertIn("base-aaaaaaa", md)
+        self.assertIn("head-bbbbbbb", md)
+
+    def test_without_a_label_the_cohort_id_of_the_file_stands(self):
+        rec, _ = self.run_build()
+        self.assertEqual(rec["treatment"]["id"], self.treat["cohort"]["id"])
+        del self.treat["cohort"]["id"]
+        self.treat["cohort"] = {}
+        self.assertEqual(self.run_build()[0]["treatment"]["id"], "treatment")
+
+    def test_a_note_is_missingness_in_the_record_and_leads_the_comment(self):
+        note = "bench failed on the PR head"
+        rec, md = self.run_build(notes=[note])
+        self.assertIn(note, rec["missingness"])
+        self.assertNotEqual(rec["outcome"], "pass")
+        self.assertLess(md.index(note), md.index("|---|"))
+
+    def test_comment_leads_with_what_moved_and_folds_what_cannot_be_measured(self):
+        self.target["metrics"] = [*self.target["metrics"], "live_only_metric"]
+        rec, md = self.run_build()
+        self.assertTrue(any("live_only_metric" in m for m in rec["missingness"]))  # the record keeps all of it
+        self.assertIn("Not measured by this instrument: `live_only_metric`", md)
+        self.assertNotIn("| live_only_metric |", md)
+        self.assertLess(md.index("<details>"), md.index("live_only_metric: absent from baseline"))
+
+    def test_flat_metrics_are_summarised_not_tabulated(self):
+        for side in (self.base, self.treat):
+            for m in side["metrics"].values():
+                m["value"] = 1.0
+        _, md = self.run_build()
+        self.assertIn("No measured metric moved", md)
+        self.assertNotIn("|---|", md)
+        self.assertIn("`first_pass_review_rate`", md)
+
+    def test_one_dead_side_stays_in_the_table(self):
+        self.treat["metrics"]["first_pass_review_rate"]["value"] = None
+        _, md = self.run_build()
+        self.assertIn("| first_pass_review_rate |", md)
+
+    def test_a_bound_already_broken_at_base_says_so_and_still_triggers(self):
+        self.base["metrics"]["first_pass_review_rate"]["value"] = 0.2
+        self.treat["metrics"]["first_pass_review_rate"]["value"] = 0.3
+        rec, md = self.run_build()
+        self.assertEqual(rec["outcome"], "regression")
+        self.assertIn("bound violated (also at base)", md)
+        self.assertIn("quality-regression", md)
+
+    def test_margin_metric_makes_a_cross_arm_stop_rule_machine_checked(self):
+        """`candidate - baseline arm` with min 0 is how a target checks one arm against another in the same run."""
+        margin = {"unit": "ratio", "direction": "higher", "min": 0, "stop_rule": "quality-regression"}
+        self.target["metrics"] = ["recall_margin_vs_bm25"]
+        self.base["metrics"] = {"recall_margin_vs_bm25": {"value": 0.01, **margin}}
+        self.treat["metrics"] = {"recall_margin_vs_bm25": {"value": -0.128, **margin}}
+        rec, md = self.run_build()
+        self.assertEqual(rec["outcome"], "regression")
+        self.assertIn({"name": "stop_rule:quality-regression", "passed": False}, rec["guardrails"])
+        self.assertIn("Stop rule `quality-regression` triggered by `recall_margin_vs_bm25`", md)
+
+    def test_a_null_baseline_cannot_clear_an_unbounded_stop_rule(self):
+        self.base["metrics"]["review_latency_ms"].update(stop_rule="quality-regression", value=None)
+        self.treat["metrics"]["review_latency_ms"].update(stop_rule="quality-regression")
+        del self.base["metrics"]["first_pass_review_rate"]["stop_rule"]
+        del self.treat["metrics"]["first_pass_review_rate"]["stop_rule"]
+        rec, _ = self.run_build()
+        self.assertNotIn("stop_rule:quality-regression", [g["name"] for g in rec["guardrails"]])
+        self.assertTrue(any("quality-regression" in m and "not evaluated" in m for m in rec["missingness"]))
+
+    def test_a_null_baseline_can_still_break_a_bound(self):
+        self.base["metrics"]["first_pass_review_rate"]["value"] = None
+        self.treat["metrics"]["first_pass_review_rate"]["value"] = 0.1
+        rec, _ = self.run_build()
+        self.assertIn({"name": "stop_rule:quality-regression", "passed": False}, rec["guardrails"])
+
+    def test_notes_change_the_digest(self):
+        plain, _ = self.run_build()
+        noted, _ = self.run_build(notes=["the bench crashed"])
+        self.assertNotEqual(plain["evidence_sha256"], noted["evidence_sha256"])
+
+    def test_a_metric_only_the_head_measured_is_shown_not_called_unmeasured(self):
+        self.target["metrics"] = [*self.target["metrics"], "new_metric"]
+        self.treat["metrics"]["new_metric"] = {"value": 0.9, "unit": "ratio", "direction": "higher"}
+        rec, md = self.run_build()
+        row = next(m for m in rec["metrics"] if m["name"] == "new_metric")
+        self.assertEqual((row["treatment"], row["verdict"]), (0.9, "missing"))
+        self.assertTrue(accepted_by_schema(rec))
+        self.assertIn("| new_metric | missing | 0.9 |", md)
+        self.assertNotIn("Not measured by this instrument: `new_metric`", md)
+
+    def test_an_undescribed_instrument_is_not_reported_as_a_bad_one(self):
+        self.base = {"metrics": {}}  # the base bench failed: nothing is known about the instrument
+        _, md = self.run_build()
+        self.assertIn("Instrument not described by the base side", md)
+        self.assertNotIn("production code: no", md)
+        rec, _ = self.run_build()
+        self.assertIn("cap: the base side does not describe the instrument", rec["missingness"])
+        self.assertFalse(any("does not run production code" in m for m in rec["missingness"]))
+
+    def test_an_instrument_declared_bad_is_reported_as_declared(self):
+        self.base["instrument"] = {"runs_production_code": False, "baselines_named": [],
+                                   "sabotage_tested": False, "dead_arms_reported": False}
+        rec, md = self.run_build()
+        self.assertIn("production code: no", md)
+        self.assertNotIn("not described", md)
+        self.assertIn("cap: instrument does not run production code", rec["missingness"])
+
+    def test_a_non_string_cohort_id_is_malformed(self):
+        for bad in (0, False, 7, None):
+            self.treat["cohort"]["id"] = bad
+            with self.assertRaises(Malformed):
+                self.run_build()
+
+    def test_note_flag_reaches_the_record(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = {}
+            for name, doc in (("t", self.target), ("b", self.base), ("m", self.treat)):
+                paths[name] = Path(directory) / f"{name}.json"
+                paths[name].write_text(json.dumps(doc), encoding="utf-8")
+            out = Path(directory) / "e.json"
+            subprocess.run([sys.executable, str(ROOT / "scripts" / "build_evaluation.py"),
+                            "--target", str(paths["t"]), "--baseline", str(paths["b"]), "--metrics", str(paths["m"]),
+                            "--producer", "a-producer", "--evaluator", "an-evaluator",
+                            "--evidence-class", "live_labelled", "--out", str(out),
+                            "--note", "first note", "--note", "second note"], check=True, capture_output=True)
+            self.assertLessEqual({"first note", "second note"},
+                                 set(json.loads(out.read_text(encoding="utf-8"))["missingness"]))
 
 
 if __name__ == "__main__":

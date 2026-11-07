@@ -20,6 +20,10 @@ import math
 import re
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling import, run as a script or imported from tests
+from evaluation_report import render  # noqa: E402
 
 SCHEMA = "skrsi.evaluation.v4"
 CLASSES = ("synthetic", "live_self_retrieval", "live_labelled")
@@ -160,8 +164,15 @@ def _side(doc: dict, where: str) -> dict:
     return doc
 
 
+def _cohort_id(label, side: dict, fallback: str) -> str:
+    """The caller's label (a commit) and the file's cohort id together, so neither hides the other."""
+    own = side.get("cohort", {}).get("id", "")
+    _need(isinstance(own, str), "cohort id must be a string")
+    return "/".join(x for x in (label, own) if x) or fallback
+
+
 def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now,
-          baseline_id="baseline", treatment_id="treatment") -> tuple[dict, str]:
+          baseline_id=None, treatment_id=None, notes=()) -> tuple[dict, str]:
     _need(isinstance(target, dict) and target.get("schema") == "skrsi.target.v2", "target must be skrsi.target.v2")
     _need(ID.fullmatch(str(target.get("target_id", ""))) and isinstance(target.get("revision"), int), "target id/revision")
     _need(_str(producer) and _str(evaluator) and producer != evaluator, "participants must be two distinct non-empty names")
@@ -171,15 +182,15 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
     inst = baseline.get("instrument", {k: ([] if k == "baselines_named" else False) for k in INSTRUMENT_KEYS})
     _instrument_ok(inst)
     default = {"id": "", "sample_size": 0, "window_start": now, "window_end": now}
-    cohorts = [{**default, "id": cid, **side.get("cohort", {})} for cid, side in
-               ((baseline_id, base), (treatment_id, treat))]
-    rows, table, missing, triggered, bound_rules, improved = [], [], [], {}, set(), False
+    cohorts = [{**default, **side.get("cohort", {}), "id": _cohort_id(label, side, fallback)}
+               for label, side, fallback in ((baseline_id, base, "baseline"), (treatment_id, treat, "treatment"))]
+    rows, table, missing, triggered, bound_rules, unmeasured_rules, improved = [], [], list(notes), {}, set(), set(), False
     for name in target["metrics"]:
         b, t = base["metrics"].get(name), treat["metrics"].get(name)
         if b is None:  # rules come from the BASE side only: a PR cannot relax its own bar
-            rows.append({"name": name, "unit": "unknown", "baseline": None, "treatment": None,
+            rows.append({"name": name, "unit": "unknown", "baseline": None, "treatment": (head := (t or {}).get("value")),
                          "direction": "unknown", "verdict": "missing"})
-            table.append((name, None, None, None, "missing"))
+            table.append((name, None, head, None, "missing"))
             missing.append(f"{name}: absent from baseline, so no base rules apply")
             continue
         spec = b
@@ -188,12 +199,15 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
         bv, tv = b["value"], (t or {}).get("value")
         verdict, delta = _verdict(bv, tv, spec)
         out_of_bounds = tv is not None and (tv < spec.get("min", tv) or tv > spec.get("max", tv))
-        status = "bound violated" if out_of_bounds else verdict
+        also_at_base = out_of_bounds and bv is not None and (bv < spec.get("min", bv) or bv > spec.get("max", bv))
+        status = "bound violated (also at base)" if also_at_base else "bound violated" if out_of_bounds else verdict
         bounded = "min" in spec or "max" in spec
         sid = spec.get("stop_rule")
         if sid:
             _need(sid in rules, f"{name}: stop_rule {sid!r} is not in the target")
             bound_rules.add(sid)
+            if tv is None or (bv is None and not bounded):  # an unmeasured metric cannot clear a stop rule
+                unmeasured_rules.add(sid)
             if out_of_bounds if bounded else verdict == "regressed":  # a declared bound is the rule's condition
                 triggered[sid] = name
         for side, v in (("baseline", bv), ("treatment", tv)):
@@ -203,7 +217,7 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
         rows.append({"name": name, "unit": spec["unit"], "baseline": bv, "treatment": tv, "direction": spec["direction"],
                      "verdict": verdict, **{k: spec[k] for k in ("tolerance", "min", "max") if k in spec}})
         table.append((name, bv, tv, delta, status))
-    regressed = any(s in ("regressed", "bound violated") for *_, s in table)
+    regressed = any(s == "regressed" or s.startswith("bound violated") for *_, s in table)
     asserted = treat.get("invariants", {})
     unknown = set(asserted) - set(target["invariants"])
     _need(not unknown, f"invariants not in target: {sorted(unknown)}")
@@ -216,14 +230,18 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
             guards.append({"name": f"invariant:{inv}", "passed": asserted[inv]})
         else:
             missing.append(f"invariant not asserted by the bench: {inv}")
-    for sid in sorted(bound_rules):
+    checked_rules = {sid for sid in bound_rules if sid in triggered or sid not in unmeasured_rules}
+    for sid in sorted(checked_rules):
         guards.append({"name": f"stop_rule:{sid}", "passed": sid not in triggered})
+    missing += [f"stop rule {sid} not evaluated: a metric bound to it is unmeasured"
+                for sid in sorted(bound_rules - checked_rules)]
     caps = [(evidence_class == "synthetic", "cap: evidence_class synthetic cannot support pass"),
             (not inst["runs_production_code"], "cap: instrument does not run production code"),
             (not inst["sabotage_tested"], "cap: instrument has no demonstrated sabotage failure"),
             (not inst["dead_arms_reported"], "cap: instrument does not report dead arms as dead"),
             (not inst["baselines_named"], "cap: no named baselines")]
-    missing += [msg for hit, msg in caps if hit]
+    described = "instrument" in baseline
+    missing += [m for hit, m in caps if hit and (described or "evidence_class" in m)] + ([] if described else ["cap: the base side does not describe the instrument"])
     small = [c["id"] for c in cohorts if c["sample_size"] < min_n]
     if small:
         missing.append(f"cap: sample size below the target minimum of {min_n} in {', '.join(small)}")
@@ -239,7 +257,8 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
         outcome, missing = "inconclusive", ["no metric improved beyond its tolerance"]
     else:
         outcome = "pass"
-    digest = hashlib.sha256(json.dumps([target, baseline, metrics, evidence_class, [producer, evaluator]],
+    digest = hashlib.sha256(json.dumps([target, baseline, metrics, evidence_class, [producer, evaluator],
+                                        [c["id"] for c in cohorts], list(notes)],
                                        sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     rec = {"schema": SCHEMA, "evaluation_id": f"eval-{target['target_id']}-{digest[:12]}"[:128],
            "target_ref": f"{target['target_id']}@{target['revision']}", "participants": [producer, evaluator],
@@ -247,27 +266,8 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
            "missingness": missing, "evidence_class": evidence_class, "instrument": inst, "outcome": outcome,
            "evidence_sha256": digest}
     validate_v4(rec)
-    return rec, _markdown(rec, table, [(s, rules[s], triggered[s]) for s in sorted(triggered)],
-                          [s for s in rules if s not in bound_rules])
-
-
-def _markdown(rec, table, triggered, unchecked) -> str:
-    f = lambda v: "missing" if v is None else f"{v:.6g}"
-    i = rec["instrument"]
-    out = [f"### SKRSI evaluation: **{rec['outcome']}** (`{rec['target_ref']}`)", "",
-           f"Evidence class `{rec['evidence_class']}`; production code: {'yes' if i['runs_production_code'] else 'no'}; "
-           f"sabotage tested: {'yes' if i['sabotage_tested'] else 'no'}; dead arms reported: "
-           f"{'yes' if i['dead_arms_reported'] else 'no'}; baselines: {', '.join(i['baselines_named']) or 'none named'}.",
-           "", "| metric | baseline | treatment | delta | verdict |", "|---|---|---|---|---|"]
-    out += [f"| {n} | {f(b)} | {f(t)} | {f(d)} | {s} |" for n, b, t, d, s in table]
-    for sid, rule, metric in triggered:
-        out.append(f"\nStop rule `{sid}` triggered by `{metric}`: proposed action `{rule['action']}`, owner {rule['owner']}.")
-    if unchecked:
-        out.append("\nStop rules not machine-checked: " + ", ".join(f"`{s}`" for s in unchecked) + ".")
-    if rec["missingness"]:
-        out += ["", "Missing or capped:"] + [f"- {m}" for m in rec["missingness"]]
-    out.append("\nAdvisory evidence only. It does not gate, approve or merge anything.")
-    return "\n".join(out) + "\n"
+    return rec, render(rec, table, [(s, rules[s], triggered[s]) for s in sorted(triggered)],
+                          [s for s in rules if s not in checked_rules], list(notes), described)
 
 
 def main(argv=None) -> int:
@@ -275,13 +275,14 @@ def main(argv=None) -> int:
     for flag in ("target", "baseline", "metrics", "producer", "evaluator", "evidence-class", "out", "md"):
         a.add_argument("--" + flag, required=flag != "md")
     a.add_argument("--now", default=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
-    a.add_argument("--baseline-id", default="baseline")
-    a.add_argument("--treatment-id", default="treatment")
+    a.add_argument("--baseline-id", help="Label for the baseline cohort, usually its commit.")
+    a.add_argument("--treatment-id", help="Label for the treatment cohort, usually its commit.")
+    a.add_argument("--note", action="append", default=[], help="A known evidence gap; recorded as missingness (repeatable).")
     args = a.parse_args(argv)
     try:
         rec, md = build(_load(args.target), _load(args.baseline), _load(args.metrics), producer=args.producer,
                         evaluator=args.evaluator, evidence_class=args.evidence_class, now=args.now,
-                        baseline_id=args.baseline_id, treatment_id=args.treatment_id)
+                        baseline_id=args.baseline_id, treatment_id=args.treatment_id, notes=args.note)
         with open(args.out, "w", encoding="utf-8") as fh:
             json.dump(rec, fh, indent=2, sort_keys=True)
             fh.write("\n")

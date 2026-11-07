@@ -76,9 +76,11 @@ jobs:
       bench_command: python -m my_pkg.bench --skrsi-out "$SKRSI_METRICS_OUT"
 ```
 
-The workflow runs `bench_command` on the PR head and again at the PR base (or `baseline_command`), so both sides are
-measured by the same instrument. It builds `evaluation.json` and `evaluation.md`, uploads them as the
-`skrsi-evaluation` artifact, and upserts one comment per target. Pin `skrsi_ref` to a commit to freeze behaviour.
+The workflow runs `bench_command` on the PR head and again at the PR base (or `baseline_command`), each from its own
+checkout. A PR that edits its bench therefore compares two versions of the instrument, and nothing flags that, so read a
+moved number in such a PR with care. It builds `evaluation.json` and `evaluation.md`, uploads them as the
+`skrsi-evaluation` artifact, and upserts one comment per target. To freeze behaviour, pin both `uses:` and `skrsi_ref`
+to one commit: `skrsi_ref` alone freezes the scripts but not the workflow that calls them.
 
 ### Metrics file
 
@@ -111,6 +113,51 @@ The workflow also reads the target at the base ref (falling back to the head cop
 false), which beats `inconclusive` (any missingness, a synthetic evidence class, an instrument that does not run
 production code, has no sabotage test, does not report dead arms or names no baseline, or no metric improved), which
 beats `pass`. `scripts/build_evaluation.py` exits 0 for every outcome and 2 only when its own input is malformed.
+
+## Getting signal out of a target
+
+What the first adopter learned, with the evidence in the [case study](./CASE-STUDY-SKMEMORY-RETRIEVAL.md):
+
+- **Do not collapse what you need to see.** A worst-of or mean metric hides any change that stays above the floor. Name one
+  metric per class in the target (`class_mrr.semantic`). The comment shows only what moved, so more metrics add no noise.
+- **Measure the objective itself.** If the objective compares two arms, emit their difference from one run, in the same
+  bench: `recall_margin_vs_bm25 = min over classes of (candidate - bm25)`. No schema change is needed.
+- **Machine-check a cross-arm stop rule with a margin.** Give that metric `"min": 0` and a `stop_rule`. Leave the bound off
+  when the margin is already negative and the rule does not apply to this evidence class, or every PR reports a
+  regression it did not cause. A bound that was already broken at base says so in the comment.
+- **Ask what real change would leave each metric flat.** A sabotage test shows the instrument can go red. It does not show
+  that it sees the change you care about.
+- **Only list invariants someone can assert.** `build_evaluation.py` already enforces distinct producer and evaluator, so
+  listing that as a target invariant only adds a permanent missingness line.
+- **Filter on what the bench imports.** A path filter narrower than the code under test skips the PRs that matter.
+
+### Use relative paths in `bench_command`
+
+The bench runs with the checkout of the side it measures as its working directory. `$GITHUB_WORKSPACE` always points at the
+PR's merge commit, so a flattener called through it measures the base with the PR's rules. The measured treatment is that
+merge commit, labelled with the PR head.
+
+This protects against accidents, not a hostile PR. A `pull_request` run takes its caller workflow, and so `bench_command`,
+from the PR itself. SKRSI is advisory evidence, and review remains the control.
+
+### Live evidence
+
+CI cannot reach a private corpus, and the workflow must not be given access to one. Live evidence goes through the same
+builder, run where the data is:
+
+```bash
+python scripts/build_evaluation.py --target skrsi/targets/my-target.json \
+  --baseline before.json --metrics after.json --producer my-runner --evaluator skrsi-local \
+  --evidence-class live_self_retrieval --baseline-id "$BASE_SHA" --treatment-id "$HEAD_SHA" \
+  --out evaluation.json --md evaluation.md
+```
+
+Flatten the live output into the metrics shape first, aggregates only, and report a dead arm as `null`. Only commit or post
+what the data boundary above allows. A private corpus can only reach `pass` this way, because synthetic evidence is capped.
+`evidence_class` is whatever the caller declares and nothing verifies it, so declaring a fixture run as live is a false
+record, and review is what catches it.
+
+`--note` records a known gap as missingness and leads the comment. The workflow uses it to name a bench that failed.
 
 ## Build-quality telemetry
 

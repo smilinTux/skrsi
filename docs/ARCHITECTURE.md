@@ -57,7 +57,7 @@ flowchart TD
       public["scripts/validate_public.py"]
     end
     subgraph ci[GitHub workflows]
-      evaluate["evaluate.yml<br/>reusable, advisory"]
+      evaluate["evaluate.yml<br/>reusable, advisory, called by adopters"]
       selftest["evaluate-selftest.yml"]
       docs["docs.yml<br/>required check: validate"]
     end
@@ -106,10 +106,11 @@ sequenceDiagram
     participant B as build_evaluation.py
     participant GH as GitHub API
     PR->>WF: pull_request event
-    WF->>Head: checkout, no persisted token
-    WF->>Head: setup and bench_command
+    WF->>Head: checkout PR merge commit, no persisted token
+    WF->>WF: checkout skrsi tools at skrsi_ref, set up Python
+    WF->>Head: setup_command, then bench_command
     WF->>Base: git worktree add at base sha
-    WF->>Base: same bench from the base checkout
+    WF->>Base: setup_command, then baseline_command or bench_command
     WF->>B: target at base, both metrics files, notes for a failed side
     B-->>WF: evaluation.json and evaluation.md, exit 0 for any outcome
     WF->>GH: upload artifact
@@ -150,8 +151,9 @@ SKRSI is **SK Recursive SELF Improvement**. SELF expands to **Systematic Evaluat
 ## Current implementation
 
 The first-wave implementation currently lives in SKCapstone modules named `skrsi_registry`, `skrsi_collector`, `skrsi_evaluator`, `skrsi_experiment_controller`, `skrsi_estate_adapters`, `skrsi_handoffs`, and `skrsi_runtime`. SKDashboard provides bounded aggregate visibility. Extraction into this repository is a future governed change, not implied by this documentation initialization. Those modules use `skrsi.target.v1` and `skrsi.cohort-evaluation.v1`, not the public `target-v2` and
-`evaluation-v4` contracts, and no adopter currently feeds them; the public builder and workflow in this repository are
-what adopters use.
+`evaluation-v4` contracts. Their only feed is SKCapstone's own fleet-heartbeat collector (`scripts/skrsi/collect_fleet.py`,
+with a systemd timer that was disabled where checked on 2026-11-07) and the `skcapstone skrsi run` command.
+No external adopter feeds them. Adopters use the public builder and workflow in this repository.
 
 ## Public contract boundary
 

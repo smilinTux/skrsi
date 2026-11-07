@@ -69,13 +69,15 @@ SKCapstone under the `skrsi_*` modules. Runtime identifiers remain lowercase
 | An experiment claims success with missing gates | Verify the evaluator outcome and independent review evidence. |
 | A proposal appears to authorize an action | Stop it and route through the existing lifecycle authorization gate. |
 | Historical evidence uses older wording | Preserve it unchanged and add a current explanatory link. |
+| Every PR comment says flat | The metric may be too coarse to move. See "Getting signal out of a target" in `docs/ADOPTER-GUIDE.md`. |
+| A comment warns the bench produced no metrics | Read the bench step in the run log. On a target's first PR the base side has no bench yet, which is expected. |
 
 ## 9. Maturity-tier + Version reference
 
 Maturity tier: T0, N/A because this repository handles no key material. Version phase: Incubating v4. Current documentation and contract version: 0.3.0. SKRSI is not a crypto component.
 
 <!-- docs-evidence
-verified: 2026-09-09
+verified: 2026-11-07
 checks:
   - name: canonical expansion is present
     run: grep -q 'Recursive Systematic Evaluation, Learning, and Feedback Improvement' README.md

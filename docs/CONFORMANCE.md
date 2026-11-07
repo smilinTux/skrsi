@@ -22,6 +22,7 @@ An implementation may claim one of these cumulative levels:
   unique evaluation participant tuple.
 - A PASS evaluation has numeric baseline and treatment values for every metric,
   no failed guardrail, and no explicit missingness entry.
+- Evaluation v4 records never pass with synthetic evidence or an instrument that does not run production code.
 - Feedback is proposal-only and passes through the adopter's existing authority.
 - Stop, expiry, rollback, and recovery behavior is tested.
 - No valid SKRSI record grants merge, deployment, credential, or actuation power.

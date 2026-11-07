@@ -47,7 +47,7 @@ git diff --check
 
 ## 5. Release / Deploy
 
-Release is a reviewed merge to `main`. Deployment is N/A because this repository has no service or network surface. Rollback is a revert of the exact merge commit.
+Release is a reviewed merge to `main`. The reusable `evaluate.yml` workflow is consumed by ref (`@main`, or a pinned commit) and is advisory only. Deployment is N/A because this repository has no service or network surface. Rollback is a revert of the exact merge commit.
 
 ## 6. Configuration / Usage
 
@@ -72,7 +72,7 @@ SKCapstone under the `skrsi_*` modules. Runtime identifiers remain lowercase
 
 ## 9. Maturity-tier + Version reference
 
-Maturity tier: T0, N/A because this repository handles no key material. Version phase: Incubating v3. Current documentation and contract version: 0.2.0. SKRSI is not a crypto component.
+Maturity tier: T0, N/A because this repository handles no key material. Version phase: Incubating v4. Current documentation and contract version: 0.3.0. SKRSI is not a crypto component.
 
 <!-- docs-evidence
 verified: 2026-09-09
@@ -83,4 +83,6 @@ checks:
     run: python3 -m unittest discover -s tests -v
   - name: no runtime package is claimed
     run: test ! -d src
+  - name: advisory evaluation tooling is present
+    run: test -f .github/workflows/evaluate.yml && test -f scripts/build_evaluation.py && test -f scripts/build_telemetry.py
 -->

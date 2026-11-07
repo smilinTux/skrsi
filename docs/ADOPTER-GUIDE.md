@@ -82,8 +82,10 @@ measured by the same instrument. It builds `evaluation.json` and `evaluation.md`
 
 ### Metrics file
 
-Baseline and metrics share one shape. Rules ride with the metrics side, so the baseline file can be the same
-instrument's output at the base commit.
+Baseline and metrics share one shape. Rules (`direction`, `tolerance`, `min`, `max`, `stop_rule`, `unit`) and the
+`instrument` description are read from the BASE side only, so a PR cannot relax its own bar; the metrics side supplies
+values and invariants. If the PR's file changes a rule, the base rule applies and the change is listed as missingness.
+The workflow also reads the target at the base ref (falling back to the head copy for a target's first PR).
 
 ```json
 {

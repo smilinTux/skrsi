@@ -6,9 +6,9 @@
     "window_end": "2029-12-15T00:00:00Z",
     "window_start": "2029-12-01T00:00:00Z"
   },
-  "evaluation_id": "eval-review-latency-4818cb5918a4",
+  "evaluation_id": "eval-review-latency-f5930b903b82",
   "evidence_class": "synthetic",
-  "evidence_sha256": "4818cb5918a40b4344882d854f3291908a276bb41a871d27ff88dc07899416c2",
+  "evidence_sha256": "f5930b903b821984a16f4489d136b21d5a84fc703fb36813c0ffcae4c9c0440a",
   "guardrails": [
     {
       "name": "independent_evaluator",
@@ -38,15 +38,21 @@
   "metrics": [
     {
       "baseline": 120000,
+      "direction": "lower",
       "name": "review_latency_ms",
+      "tolerance": 0.05,
       "treatment": 90000,
-      "unit": "ms"
+      "unit": "ms",
+      "verdict": "improved"
     },
     {
       "baseline": 0.8,
+      "direction": "higher",
+      "min": 0.5,
       "name": "first_pass_review_rate",
       "treatment": 0.9,
-      "unit": "ratio"
+      "unit": "ratio",
+      "verdict": "improved"
     }
   ],
   "missingness": [

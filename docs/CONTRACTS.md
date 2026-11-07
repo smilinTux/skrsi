@@ -54,7 +54,12 @@ they made. v4 adds two required fields:
   instrument was shown failing when production was broken on purpose) and `dead_arms_reported` (a dead arm is reported
   as dead, never as zero).
 
-Validator rule: outcome `pass` is impossible with `evidence_class` `synthetic` or with `runs_production_code` false.
-Those records are capped at `inconclusive` (or the stronger `fail`, `blocked` or `regression`). The v3 rules still
-apply to `pass`. The other three instrument flags are reported evidence; `scripts/build_evaluation.py` also caps its
-own output when they are weak, but the schema does not require it.
+Each metric carries `direction`, `verdict` (improved, flat, regressed, missing) and optional `tolerance`, `min`, `max`.
+
+Contract rule: outcome `pass` requires `evidence_class` other than `synthetic`, all four instrument flags true (production
+code, sabotage tested, dead arms reported) and at least one named baseline, no regressed or missing metric and at least
+one improved, plus the v3 conditions (passed guardrails, no missingness, numeric values). Records that do not meet this
+are capped at `inconclusive` (or the stronger `fail`, `blocked` or `regression`). JSON Schema cannot do arithmetic or
+compare dates, so `validate_v4` in `scripts/build_evaluation.py` is the normative validator: it also recomputes every
+`verdict` from the numbers and requires `window_end` not before `window_start`. The schema carries every rule it can
+express, and the two are tested against each other.

@@ -93,6 +93,47 @@ class ContractV4(unittest.TestCase):
                 self.assertFalse(accepted_by_schema(r))
         self.assertTrue(accepted_by_schema(base) and accepted_by_stdlib(base))
 
+    def test_hand_crafted_pass_is_rejected_by_contract_and_validator_alike(self):
+        def regress(r):
+            r["metrics"][1].update(treatment=0.1, verdict="regressed")
+
+        def lie(r):  # a verdict that does not match the numbers: only the validator can see it
+            r["metrics"][1].update(treatment=0.1)
+
+        both = {
+            "sabotage not tested": lambda r: r["instrument"].update(sabotage_tested=False),
+            "dead arms not reported": lambda r: r["instrument"].update(dead_arms_reported=False),
+            "no baselines named": lambda r: r["instrument"].update(baselines_named=[]),
+            "regressed verdict": regress,
+            "nothing improved": lambda r: [m.update(verdict="flat") for m in r["metrics"]],
+            "missing verdict on pass": lambda r: r["metrics"][0].update(verdict="missing"),
+            "id with newline": lambda r: r.update(evaluation_id=r["evaluation_id"] + "\n"),
+            "sha with newline": lambda r: r.update(evidence_sha256=r["evidence_sha256"][:63] + "\n"),
+            "ref with newline": lambda r: r.update(target_ref="a@1\n"),
+        }
+        for name, mutate in both.items():
+            r = self.record()
+            mutate(r)
+            with self.subTest(name):
+                self.assertFalse(accepted_by_schema(r), "schema")
+                self.assertFalse(accepted_by_stdlib(r), "validator")
+        r = self.record()
+        lie(r)  # schema cannot recompute arithmetic; the normative validator can
+        self.assertFalse(accepted_by_stdlib(r))
+        r = self.record()
+        r["baseline"]["window_end"] = "2000-01-01T00:00:00Z"  # before window_start: ordering is validator-only
+        self.assertFalse(accepted_by_stdlib(r))
+        r = self.record()
+        r["treatment"]["window_start"] = "2029-13-45T00:00:00Z"
+        self.assertFalse(accepted_by_stdlib(r))
+
+    def test_integral_float_sample_size_and_newlines_agree(self):
+        for value, ok in ((1.0, True), (1.5, False), (True, False), (-1, False)):
+            r = self.record()
+            r["baseline"]["sample_size"] = value
+            with self.subTest(sample_size=value):
+                self.assertEqual((accepted_by_schema(r), accepted_by_stdlib(r)), (ok, ok))
+
     def test_v3_schema_is_untouched_and_v4_is_a_new_file(self):
         self.assertEqual(load("schemas/evaluation-v3.schema.json")["properties"]["schema"]["const"], "skrsi.evaluation.v3")
         self.assertNotIn("instrument", load("schemas/evaluation-v3.schema.json")["properties"])
@@ -144,16 +185,16 @@ class Builder(Inputs):
         del self.base["metrics"]["first_pass_review_rate"], self.treat["metrics"]["first_pass_review_rate"]
         rec, _ = self.run_build()
         self.assertEqual(rec["outcome"], "inconclusive")
-        self.assertIn("first_pass_review_rate: absent from baseline and metrics", rec["missingness"])
+        self.assertIn("first_pass_review_rate: absent from baseline, so no base rules apply", rec["missingness"])
 
     def test_caps_hold_the_outcome_below_pass(self):
         self.assertEqual(self.run_build("synthetic")[0]["outcome"], "inconclusive")
         for flag in ("runs_production_code", "sabotage_tested", "dead_arms_reported"):
-            self.treat["instrument"][flag] = False
+            self.base["instrument"][flag] = False
             rec, _ = self.run_build()
             self.assertEqual(rec["outcome"], "inconclusive", flag)
-            self.treat["instrument"][flag] = True
-        self.treat["instrument"]["baselines_named"] = []
+            self.base["instrument"][flag] = True
+        self.base["instrument"]["baselines_named"] = []
         self.assertEqual(self.run_build()[0]["outcome"], "inconclusive")
 
     def test_minimum_sample_size_in_the_target_caps_regression_and_pass(self):
@@ -169,6 +210,19 @@ class Builder(Inputs):
         self.treat["metrics"]["first_pass_review_rate"]["value"] = 0.9
         self.assertEqual(self.run_build()[0]["outcome"], "inconclusive")  # pass is capped too
         self.assertFalse(any(g["name"].startswith("invariant:min_sample") for g in rec["guardrails"]))
+
+    def test_a_pr_cannot_relax_its_own_bar(self):
+        # the PR's metrics file widens tolerance, drops the bound and claims a better instrument
+        self.treat["metrics"]["first_pass_review_rate"].update(value=0.4, tolerance=0.9)
+        del self.treat["metrics"]["first_pass_review_rate"]["min"]
+        del self.treat["metrics"]["first_pass_review_rate"]["stop_rule"]
+        self.treat["instrument"] = {"runs_production_code": True, "baselines_named": ["x"], "sabotage_tested": True,
+                                    "dead_arms_reported": True}
+        self.base["instrument"]["sabotage_tested"] = False
+        rec, _ = self.run_build()
+        self.assertEqual(rec["outcome"], "regression")  # base rules apply: 0.4 is under the base floor of 0.5
+        self.assertTrue(any("changes the rules" in m for m in rec["missingness"]))
+        self.assertFalse(rec["instrument"]["sabotage_tested"])
 
     def test_flat_result_is_not_a_pass(self):
         for name in self.treat["metrics"]:

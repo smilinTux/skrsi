@@ -25,11 +25,11 @@
     },
     "evaluation_id": {
       "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+      "pattern": "^(?![\\s\\S]*\\n)[a-z0-9][a-z0-9._-]{2,127}$"
     },
     "target_ref": {
       "type": "string",
-      "pattern": "^[a-z0-9._-]+@[1-9][0-9]*$"
+      "pattern": "^(?![\\s\\S]*\\n)[a-z0-9._-]+@[1-9][0-9]*$"
     },
     "participants": {
       "description": "Exactly [producer, independent evaluator], in that order.",
@@ -141,7 +141,7 @@
     },
     "evidence_sha256": {
       "type": "string",
-      "pattern": "^[0-9a-f]{64}$"
+      "pattern": "^(?![\\s\\S]*\\n)[0-9a-f]{64}$"
     }
   },
   "allOf": [
@@ -181,11 +181,28 @@
                 },
                 "treatment": {
                   "type": "number"
+                },
+                "verdict": {
+                  "enum": [
+                    "improved",
+                    "flat"
+                  ]
                 }
               },
               "required": [
                 "baseline",
-                "treatment"
+                "treatment",
+                "verdict"
+              ]
+            },
+            "contains": {
+              "properties": {
+                "verdict": {
+                  "const": "improved"
+                }
+              },
+              "required": [
+                "verdict"
               ]
             }
           },
@@ -199,10 +216,22 @@
             "properties": {
               "runs_production_code": {
                 "const": true
+              },
+              "sabotage_tested": {
+                "const": true
+              },
+              "dead_arms_reported": {
+                "const": true
+              },
+              "baselines_named": {
+                "minItems": 1
               }
             },
             "required": [
-              "runs_production_code"
+              "runs_production_code",
+              "sabotage_tested",
+              "dead_arms_reported",
+              "baselines_named"
             ]
           }
         }
@@ -229,11 +258,13 @@
         },
         "window_start": {
           "type": "string",
-          "format": "date-time"
+          "format": "date-time",
+          "pattern": "^(?![\\s\\S]*\\n)\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(\\.\\d+)?(Z|[+-]\\d\\d:\\d\\d)$"
         },
         "window_end": {
           "type": "string",
-          "format": "date-time"
+          "format": "date-time",
+          "pattern": "^(?![\\s\\S]*\\n)\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(\\.\\d+)?(Z|[+-]\\d\\d:\\d\\d)$"
         }
       }
     },
@@ -244,7 +275,9 @@
         "name",
         "unit",
         "baseline",
-        "treatment"
+        "treatment",
+        "direction",
+        "verdict"
       ],
       "properties": {
         "name": {
@@ -264,6 +297,32 @@
             "number",
             "null"
           ]
+        },
+        "direction": {
+          "enum": [
+            "higher",
+            "lower",
+            "unknown"
+          ]
+        },
+        "verdict": {
+          "description": "improved, flat or regressed against the baseline value and the metric's tolerance and bounds; missing when either value is null. The validator recomputes it.",
+          "enum": [
+            "improved",
+            "flat",
+            "regressed",
+            "missing"
+          ]
+        },
+        "tolerance": {
+          "type": "number",
+          "minimum": 0
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
         }
       }
     }

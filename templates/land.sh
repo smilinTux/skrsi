@@ -7,7 +7,8 @@
 #      still pending (an in-progress check has no conclusion yet), never success.
 #   3. Requires pytest-style evidence from successful runs on that head. A PR
 #      with merge conflicts runs no tests, so all-green checks prove nothing.
-#   4. Squash-merges, then runs the optional LAND_ACCEPT_CMD hook and cleans up.
+#   4. Squash-merges with --match-head-commit, so a push between the last poll and the merge cannot land an
+#      unreviewed head, then runs the optional LAND_ACCEPT_CMD hook and cleans up.
 #
 # Env (all optional):
 #   LANE_STATE_DIR    evidence/log dir. Default: $XDG_STATE_HOME/lane-land or ~/.local/state/lane-land.
@@ -53,7 +54,7 @@ done
 { echo "repo=$repo pr=$pr commit=$head"; sort -u "$log.part"; } >"$log"
 rm -f "$log.part"
 
-gh pr merge "$pr" --repo "$repo" --squash || { echo "ABORT merge failed"; exit 6; }
+gh pr merge "$pr" --repo "$repo" --squash --match-head-commit "$head" || { echo "ABORT merge failed"; exit 6; }
 merged=$(gh pr view "$pr" --repo "$repo" --json mergeCommit -q .mergeCommit.oid)
 if [ -n "${LAND_ROUND_CMD:-}" ]; then
   LAND_ROUND="${pr} ${head} PASS" bash -c "$LAND_ROUND_CMD"

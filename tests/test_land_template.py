@@ -40,6 +40,8 @@ class LandTemplate(unittest.TestCase):
                    "LAND_ACCEPT_CMD": f'echo "$LAND_MERGED" > "{d}/accepted"'}
             proc = subprocess.run(["bash", str(ROOT / "templates/land.sh"), "o/r", "7", reviewed],
                                   env=env, capture_output=True, text=True)
+            calls = (d / "calls").read_text() if (d / "calls").exists() else ""
+            self.merge_call = next((c for c in calls.splitlines() if c.startswith("pr merge")), "")
             self.round = (d / "round").read_text().strip() if (d / "round").exists() else None
             return proc, (d / "merged").exists(), (d / "accepted").exists(), (d / "state").exists()
 
@@ -48,6 +50,7 @@ class LandTemplate(unittest.TestCase):
         done = [{"status": "COMPLETED", "conclusion": "SUCCESS"}, {"status": "COMPLETED", "conclusion": "SKIPPED"}]
         proc, merged, accepted, _ = self.run_land(done)
         self.assertEqual((proc.returncode, merged, accepted), (0, True, True), proc.stdout + proc.stderr)
+        self.assertIn("--match-head-commit abc", self.merge_call)
         self.assertEqual(self.round, "7 abc PASS")  # the landing round is recorded in the board format
 
         # an in-progress check has an empty conclusion: pending, never success

@@ -107,6 +107,10 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           mkdir -p skrsi-out
+          # The target (stop rules, invariants, minimum sample) is read at the BASE ref, so a PR cannot relax its
+          # own bar. Metric rules and the instrument description come from the base side's baseline file the same
+          # way. A target that does not exist at base yet (its first PR) falls back to the head copy.
+          if [ -f ".skrsi-base/$TARGET" ]; then TARGET=".skrsi-base/$TARGET"; fi
           for f in "$SKRSI_METRICS_OUT" "$SKRSI_BASELINE_OUT"; do
             [ -s "$f" ] || echo '{"metrics":{}}' > "$f"
           done

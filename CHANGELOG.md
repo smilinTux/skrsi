@@ -8,7 +8,8 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 - Card `b31ab30b`, from the first real adopter: a stop rule bound to an unmeasured metric no longer records a passed
   guardrail; commit labels are kept in cohort ids and covered by `evidence_sha256`, so evaluations differ per commit
-  (the golden examples change only in `evaluation_id` and `evidence_sha256`); a failed bench is named in the record and
+  (the golden examples change only in `evaluation_id` and `evidence_sha256`); notes are covered by the digest; a metric
+  only the head measured is shown rather than called unmeasured; a non-string cohort id is malformed; a failed bench is named in the record and
   leads the comment, and its partial output is discarded; checkouts no longer persist a token while PR code runs.
 
 ### Changed

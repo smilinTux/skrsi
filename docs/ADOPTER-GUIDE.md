@@ -76,9 +76,11 @@ jobs:
       bench_command: python -m my_pkg.bench --skrsi-out "$SKRSI_METRICS_OUT"
 ```
 
-The workflow runs `bench_command` on the PR head and again at the PR base (or `baseline_command`), so both sides are
-measured by the same instrument. It builds `evaluation.json` and `evaluation.md`, uploads them as the
-`skrsi-evaluation` artifact, and upserts one comment per target. Pin `skrsi_ref` to a commit to freeze behaviour.
+The workflow runs `bench_command` on the PR head and again at the PR base (or `baseline_command`), each from its own
+checkout. A PR that edits its bench therefore compares two versions of the instrument, and nothing flags that, so read a
+moved number in such a PR with care. It builds `evaluation.json` and `evaluation.md`, uploads them as the
+`skrsi-evaluation` artifact, and upserts one comment per target. To freeze behaviour, pin both `uses:` and `skrsi_ref`
+to one commit: `skrsi_ref` alone freezes the scripts but not the workflow that calls them.
 
 ### Metrics file
 
@@ -151,7 +153,9 @@ python scripts/build_evaluation.py --target skrsi/targets/my-target.json \
 ```
 
 Flatten the live output into the metrics shape first, aggregates only, and report a dead arm as `null`. Only commit or post
-what the data boundary above allows. `pass` is reachable only this way, because synthetic evidence is capped.
+what the data boundary above allows. A private corpus can only reach `pass` this way, because synthetic evidence is capped.
+`evidence_class` is whatever the caller declares and nothing verifies it, so declaring a fixture run as live is a false
+record, and review is what catches it.
 
 `--note` records a known gap as missingness and leads the comment. The workflow uses it to name a bench that failed.
 

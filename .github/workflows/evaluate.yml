@@ -31,7 +31,7 @@ on:
         type: string
         required: true
       baseline_command:
-        description: Same instrument at the PR base commit (defaults to bench_command, so both sides are measured alike).
+        description: Command for the PR base commit. Defaults to bench_command, run from the base checkout.
         type: string
         default: ""
       evidence_class:
@@ -91,7 +91,7 @@ jobs:
           mkdir -p skrsi-out
           if [ -n "$SETUP" ]; then bash -c "$SETUP"; fi
           bash -c "$BENCH"
-      - name: Bench on the PR base (same instrument)
+      - name: Bench on the PR base
         id: base
         continue-on-error: true
         env:

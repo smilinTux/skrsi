@@ -9,11 +9,11 @@ pinned live baseline are in the skmemory repository under `skrsi/`.
 - Evaluation v4 capped every synthetic run at `inconclusive`. Nothing claimed a win on fixture data.
 - Pinning a live baseline before any fix recorded the uncomfortable number: fused recall at 5 of 0.601 against 0.729 for
   plain BM25 on 398 self-retrieval queries, which is what started the fusion work.
-- The sabotage claim held up when rerun. Reversing fusion output, dropping the top hit, or cutting to one result took the
-  worst class recall from 0.64 to 0.0. Moving the top hit to rank 5 took it to 0.625.
-- The workflow stayed advisory and blocked nothing. Two early runs were startup failures with no jobs, cause not established;
-  later runs with the same caller file succeeded. A startup failure shows red on the PR, which no `continue-on-error` can
-  prevent, so it must never be made a required check.
+- The sabotage claim held up when rerun. Reversing fusion output, dropping the top hit, or reversing and cutting to one
+  result took the worst class recall from 0.64 to 0.0. Moving the top hit to rank 5 took it to 0.625.
+- The workflow stayed advisory and blocked nothing. Two early runs were startup failures with no jobs, both before the
+  reusable workflow reached `main`, which the adopter PR had predicted. Later runs with the same caller file succeeded. A
+  startup failure shows red on the PR, which no `continue-on-error` can prevent, so it must never be made a required check.
 
 ## What it missed
 
@@ -23,7 +23,7 @@ pinned live baseline are in the skmemory repository under `skrsi/`.
 | Objective not measured | The objective is "at or above BM25 for every query type", yet no metric compared those arms. Offline, procedural recall sits at 0.667 against 1.000 for BM25 on both sides of that PR, unseen. | Adopter: margin metrics. |
 | Top stop rule unchecked | `fusion-below-bm25` is the decision rule for a later rewrite and was never machine-checked. | Adopter: a bound margin metric on live evidence. |
 | Live evidence had no route in | The pinned baseline uses a private shape, and CI cannot reach a private corpus, so five of seven metrics were missing on every PR. | Adopter: a local flattener. SKRSI: this guide. |
-| Same comment on every PR | Runs on four different PRs gave one identical `evaluation_id`, and a dozen lines repeated regardless of the change. | SKRSI: fixed. |
+| Same comment on every PR | Runs on five different PRs gave one identical `evaluation_id`, and a dozen lines repeated regardless of the change. | SKRSI: fixed. |
 | Evidence not tied to a commit | The metrics file's cohort id overwrote the commit label, and the digest ignored both. | SKRSI: fixed. |
 | Unmeasured stop rule read as passed | A dead metric produced `stop_rule:<id> passed: true`. | SKRSI: fixed. |
 | A crashed bench was quiet | It looked the same as an instrument that measures nothing. | SKRSI: fixed. |

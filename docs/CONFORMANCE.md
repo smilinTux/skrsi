@@ -23,8 +23,9 @@ An implementation may claim one of these cumulative levels:
 - A PASS evaluation has numeric baseline and treatment values for every metric,
   no failed guardrail, and no explicit missingness entry.
 - Evaluation v4 records never pass with synthetic evidence or an instrument that does not run production code.
-- A guardrail records `passed` only for what was measured: a stop rule with an unmeasured metric is missingness.
-- `evidence_sha256` covers the compared cohort identities, so equal numbers at different commits are different evidence.
+- `scripts/build_evaluation.py` records a stop rule guardrail as `passed` only when its metrics were measured, and its
+  `evidence_sha256` covers the compared cohort identities and any notes. These are guarantees of the builder: a record
+  does not carry enough to check them, so `validate_v4` cannot enforce them on a record built by hand.
 - Feedback is proposal-only and passes through the adopter's existing authority.
 - Stop, expiry, rollback, and recovery behavior is tested.
 - No valid SKRSI record grants merge, deployment, credential, or actuation power.

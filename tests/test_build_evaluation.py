@@ -391,6 +391,48 @@ class AdoptionLearnings(Inputs):
         self.assertIn({"name": "stop_rule:quality-regression", "passed": False}, rec["guardrails"])
         self.assertIn("Stop rule `quality-regression` triggered by `recall_margin_vs_bm25`", md)
 
+    def test_a_null_baseline_cannot_clear_an_unbounded_stop_rule(self):
+        self.base["metrics"]["review_latency_ms"].update(stop_rule="quality-regression", value=None)
+        self.treat["metrics"]["review_latency_ms"].update(stop_rule="quality-regression")
+        del self.base["metrics"]["first_pass_review_rate"]["stop_rule"]
+        del self.treat["metrics"]["first_pass_review_rate"]["stop_rule"]
+        rec, _ = self.run_build()
+        self.assertNotIn("stop_rule:quality-regression", [g["name"] for g in rec["guardrails"]])
+        self.assertTrue(any("quality-regression" in m and "not evaluated" in m for m in rec["missingness"]))
+
+    def test_a_null_baseline_can_still_break_a_bound(self):
+        self.base["metrics"]["first_pass_review_rate"]["value"] = None
+        self.treat["metrics"]["first_pass_review_rate"]["value"] = 0.1
+        rec, _ = self.run_build()
+        self.assertIn({"name": "stop_rule:quality-regression", "passed": False}, rec["guardrails"])
+
+    def test_notes_change_the_digest(self):
+        plain, _ = self.run_build()
+        noted, _ = self.run_build(notes=["the bench crashed"])
+        self.assertNotEqual(plain["evidence_sha256"], noted["evidence_sha256"])
+
+    def test_a_metric_only_the_head_measured_is_shown_not_called_unmeasured(self):
+        self.target["metrics"] = [*self.target["metrics"], "new_metric"]
+        self.treat["metrics"]["new_metric"] = {"value": 0.9, "unit": "ratio", "direction": "higher"}
+        rec, md = self.run_build()
+        row = next(m for m in rec["metrics"] if m["name"] == "new_metric")
+        self.assertEqual((row["treatment"], row["verdict"]), (0.9, "missing"))
+        self.assertTrue(accepted_by_schema(rec))
+        self.assertIn("| new_metric | missing | 0.9 |", md)
+        self.assertNotIn("Not measured by this instrument: `new_metric`", md)
+
+    def test_an_undescribed_instrument_is_not_reported_as_a_bad_one(self):
+        self.base = {"metrics": {}}  # the base bench failed: nothing is known about the instrument
+        _, md = self.run_build()
+        self.assertIn("Instrument not described by the base side", md)
+        self.assertNotIn("production code: no", md)
+
+    def test_a_non_string_cohort_id_is_malformed(self):
+        for bad in (0, False, 7):
+            self.treat["cohort"]["id"] = bad
+            with self.assertRaises(Malformed):
+                self.run_build()
+
     def test_note_flag_reaches_the_record(self):
         with tempfile.TemporaryDirectory() as directory:
             paths = {}

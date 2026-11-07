@@ -167,6 +167,7 @@ def _side(doc: dict, where: str) -> dict:
 def _cohort_id(label, side: dict, fallback: str) -> str:
     """The caller's label (a commit) and the file's cohort id together, so neither hides the other."""
     own = side.get("cohort", {}).get("id")
+    _need(own is None or isinstance(own, str), "cohort id must be a string")
     return "/".join(x for x in (label, own) if x) or fallback
 
 
@@ -183,14 +184,13 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
     default = {"id": "", "sample_size": 0, "window_start": now, "window_end": now}
     cohorts = [{**default, **side.get("cohort", {}), "id": _cohort_id(label, side, fallback)}
                for label, side, fallback in ((baseline_id, base, "baseline"), (treatment_id, treat, "treatment"))]
-    rows, table, missing, triggered, bound_rules, improved = [], [], list(notes), {}, set(), False
-    unmeasured_rules = set()
+    rows, table, missing, triggered, bound_rules, unmeasured_rules, improved = [], [], list(notes), {}, set(), set(), False
     for name in target["metrics"]:
         b, t = base["metrics"].get(name), treat["metrics"].get(name)
         if b is None:  # rules come from the BASE side only: a PR cannot relax its own bar
-            rows.append({"name": name, "unit": "unknown", "baseline": None, "treatment": None,
+            rows.append({"name": name, "unit": "unknown", "baseline": None, "treatment": (head := (t or {}).get("value")),
                          "direction": "unknown", "verdict": "missing"})
-            table.append((name, None, None, None, "missing"))
+            table.append((name, None, head, None, "missing"))
             missing.append(f"{name}: absent from baseline, so no base rules apply")
             continue
         spec = b
@@ -206,7 +206,7 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
         if sid:
             _need(sid in rules, f"{name}: stop_rule {sid!r} is not in the target")
             bound_rules.add(sid)
-            if tv is None:  # an unmeasured metric cannot clear a stop rule
+            if tv is None or (bv is None and not bounded):  # an unmeasured metric cannot clear a stop rule
                 unmeasured_rules.add(sid)
             if out_of_bounds if bounded else verdict == "regressed":  # a declared bound is the rule's condition
                 triggered[sid] = name
@@ -256,9 +256,9 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
         outcome, missing = "inconclusive", ["no metric improved beyond its tolerance"]
     else:
         outcome = "pass"
-    # The cohort ids carry the compared commits: the same numbers at another commit are different evidence.
+    # Cohort ids carry the commits and notes carry known gaps: either one changing is different evidence.
     digest = hashlib.sha256(json.dumps([target, baseline, metrics, evidence_class, [producer, evaluator],
-                                        [c["id"] for c in cohorts]],
+                                        [c["id"] for c in cohorts], list(notes)],
                                        sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     rec = {"schema": SCHEMA, "evaluation_id": f"eval-{target['target_id']}-{digest[:12]}"[:128],
            "target_ref": f"{target['target_id']}@{target['revision']}", "participants": [producer, evaluator],

@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/evaluate*.yml"
       - "scripts/build_evaluation.py"
+      - "scripts/evaluation_report.py"
       - "examples/build-input/**"
 
 permissions:

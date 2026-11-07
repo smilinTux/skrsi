@@ -15,9 +15,11 @@ def render(rec, table, triggered, unchecked, notes=()) -> str:
     out += [f"**Warning:** {n}" for n in notes] + ([""] if notes else [])
     out += [f"`{rec['baseline']['id']}` (n={rec['baseline']['sample_size']}) against "
             f"`{rec['treatment']['id']}` (n={rec['treatment']['sample_size']}).",
-            f"Evidence class `{rec['evidence_class']}`; production code: {'yes' if i['runs_production_code'] else 'no'}; "
-            f"sabotage tested: {'yes' if i['sabotage_tested'] else 'no'}; dead arms reported: "
-            f"{'yes' if i['dead_arms_reported'] else 'no'}; baselines: {', '.join(i['baselines_named']) or 'none named'}.",
+            f"Evidence class `{rec['evidence_class']}`; " + (
+                f"production code: {'yes' if i['runs_production_code'] else 'no'}; "
+                f"sabotage tested: {'yes' if i['sabotage_tested'] else 'no'}; dead arms reported: "
+                f"{'yes' if i['dead_arms_reported'] else 'no'}; baselines: {', '.join(i['baselines_named']) or 'none named'}."
+                if any(i.values()) else "Instrument not described by the base side."),
             ""]
     if moved:
         out += ["| metric | baseline | treatment | delta | verdict |", "|---|---|---|---|---|"]

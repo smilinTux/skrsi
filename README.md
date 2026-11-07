@@ -1,7 +1,7 @@
 # SKRSI
 
 **SK Recursive SELF Improvement is the evidence-first improvement control plane for SK software lifecycle orchestration.** SELF means **Systematic Evaluation, Learning, and Feedback**.
-**Maturity tier:** T0, N/A because this repository handles no key material. **Version phase:** Incubating v3.
+**Maturity tier:** T0, N/A because this repository handles no key material. **Version phase:** Incubating v4.
 
 SKRSI measures software delivery, evaluates bounded experiments, records lessons, and proposes safer improvements. It never grants authority, approves its own work, or turns an observation into an actuation.
 
@@ -42,10 +42,20 @@ replace the canonical expansion above:
 - An inconclusive experiment stays inconclusive. A model, agent, or operator cannot relabel it as successful.
 - This repository is currently documentation-first. Runtime components remain in [SKCapstone](https://github.com/smilinTux/skcapstone) until a governed extraction card moves them.
 
+## Who uses it
+
+- [skmemory](https://github.com/smilinTux/skmemory): retrieval target `skmemory-retrieval`, an advisory evaluation on
+  every retrieval PR, and live evaluation records built on the corpus host.
+- [skstacks](https://github.com/smilinTux/skstacks) (planned): run retrospectives and component-tier stage
+  suggestions, kept out of the release gate.
+
+What the first adopter taught us: [docs/CASE-STUDY-SKMEMORY-RETRIEVAL.md](./docs/CASE-STUDY-SKMEMORY-RETRIEVAL.md).
+Site: <https://skrsi.skworld.io/>.
+
 ## Docs
 
 - [SOP.md](./SOP.md): architecture, operating model, verification, and rollback.
-- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md): responsibility and evidence boundaries.
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md): start here, the four required diagrams, responsibility and evidence boundaries.
 - [docs/CONTRACTS.md](./docs/CONTRACTS.md): versioned public contract catalog.
 - [docs/ADOPTER-GUIDE.md](./docs/ADOPTER-GUIDE.md): minimal integration path.
 - [docs/PLAYBOOK-LANES.md](./docs/PLAYBOOK-LANES.md): lane briefs, landing script and the lessons behind them.
@@ -58,6 +68,9 @@ replace the canonical expansion above:
 
 - Depends on [SKCapstone](https://github.com/smilinTux/skcapstone) for the current registry, collector, evaluator, experiment controller, and runtime handoff implementation.
 - Used by [SKDashboard](https://github.com/smilinTux/skdashboard) for bounded aggregate visibility.
+- Used by [skmemory](https://github.com/smilinTux/skmemory): the first code adopter, retrieval evaluations on every PR.
+- Used by [skstacks](https://github.com/smilinTux/skstacks) (planned): run retrospectives and tier 1 stage suggestions.
+- Site: [skrsi.skworld.io](https://skrsi.skworld.io/), part of [SKWorld](https://skworld.io/).
 - Applies to [SKWorld](https://github.com/smilinTux/skworld) software lifecycle orchestration.
 - Governed by [sk-standards](https://github.com/smilinTux/sk-standards).
 

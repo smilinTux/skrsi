@@ -20,6 +20,9 @@ flowchart LR
     G --> T
 ```
 
+The four required views (system context, components, data flow, and the PR evaluation sequence) and the Start here
+section are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
+
 Every edge has one producer, one consumer, a bounded queue, timeout, retry policy, recovery owner, and immutable terminal evidence. Existing lifecycle gates remain authoritative.
 
 **Start here:**

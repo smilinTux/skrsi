@@ -1,0 +1,27 @@
+{
+  "cohort": {
+    "id": "pr-head",
+    "sample_size": 30,
+    "window_start": "2029-12-16T00:00:00Z",
+    "window_end": "2029-12-30T00:00:00Z"
+  },
+  "invariants": {
+    "independent review remains required": true,
+    "no protected payload collection": true
+  },
+  "metrics": {
+    "review_latency_ms": {
+      "value": 90000,
+      "unit": "ms",
+      "direction": "lower",
+      "tolerance": 0.05
+    },
+    "first_pass_review_rate": {
+      "value": 0.9,
+      "unit": "ratio",
+      "direction": "higher",
+      "min": 0.5,
+      "stop_rule": "quality-regression"
+    }
+  }
+}

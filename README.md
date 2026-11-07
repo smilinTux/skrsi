@@ -48,6 +48,7 @@ replace the canonical expansion above:
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md): responsibility and evidence boundaries.
 - [docs/CONTRACTS.md](./docs/CONTRACTS.md): versioned public contract catalog.
 - [docs/ADOPTER-GUIDE.md](./docs/ADOPTER-GUIDE.md): minimal integration path.
+- [docs/PLAYBOOK-LANES.md](./docs/PLAYBOOK-LANES.md): lane briefs, landing script and the lessons behind them.
 - [docs/CONFORMANCE.md](./docs/CONFORMANCE.md): conformance levels and checks.
 - [SECURITY.md](./SECURITY.md): threat model and private reporting.
 - [CONTRIBUTING.md](./CONTRIBUTING.md): branch, test, and independent review workflow.

@@ -1,0 +1,72 @@
+{
+  "$schema_file": "schemas/evaluation-v4.schema.json",
+  "baseline": {
+    "id": "main-at-base",
+    "sample_size": 30,
+    "window_end": "2029-12-15T00:00:00Z",
+    "window_start": "2029-12-01T00:00:00Z"
+  },
+  "evaluation_id": "eval-review-latency-c1db9107c0b1",
+  "evidence_class": "live_labelled",
+  "evidence_sha256": "c1db9107c0b14bdea9522f5c84163c4d1011e4540b90a43be46f23c1ac7fa5d8",
+  "guardrails": [
+    {
+      "name": "independent_evaluator",
+      "passed": true
+    },
+    {
+      "name": "invariant:independent review remains required",
+      "passed": true
+    },
+    {
+      "name": "invariant:no protected payload collection",
+      "passed": true
+    },
+    {
+      "name": "stop_rule:quality-regression",
+      "passed": true
+    }
+  ],
+  "instrument": {
+    "baselines_named": [
+      "main-at-base"
+    ],
+    "dead_arms_reported": true,
+    "runs_production_code": true,
+    "sabotage_tested": true
+  },
+  "metrics": [
+    {
+      "baseline": 120000,
+      "direction": "lower",
+      "name": "review_latency_ms",
+      "tolerance": 0.05,
+      "treatment": 90000,
+      "unit": "ms",
+      "verdict": "improved"
+    },
+    {
+      "baseline": 0.8,
+      "direction": "higher",
+      "min": 0.5,
+      "name": "first_pass_review_rate",
+      "treatment": 0.9,
+      "unit": "ratio",
+      "verdict": "improved"
+    }
+  ],
+  "missingness": [],
+  "outcome": "pass",
+  "participants": [
+    "collector-a",
+    "reviewer-b"
+  ],
+  "schema": "skrsi.evaluation.v4",
+  "target_ref": "review-latency@1",
+  "treatment": {
+    "id": "pr-head",
+    "sample_size": 30,
+    "window_end": "2029-12-30T00:00:00Z",
+    "window_start": "2029-12-16T00:00:00Z"
+  }
+}

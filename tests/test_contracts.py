@@ -35,7 +35,7 @@ class PublicContractTests(unittest.TestCase):
             Draft202012Validator.check_schema(schema)
             schemas[path.relative_to(ROOT).as_posix()] = schema
 
-        self.assertEqual(len(schemas), 5)
+        self.assertEqual(len(schemas), 6)
         for path in sorted((ROOT / "examples").glob("*.json")):
             instance = json.loads(path.read_text(encoding="utf-8"))
             schema_path = instance.pop("$schema_file")

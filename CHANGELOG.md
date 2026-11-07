@@ -6,6 +6,11 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ### Added
 
+- Review rounds are recorded as `review_round` links; build telemetry reports review metrics as missing unless every round is recorded and a target can state `min_sample_size`.
+- Card `d8aecd58` (SKRSI-02): publish evaluation v4 (`evidence_class`, `instrument`; `pass` impossible for
+  synthetic evidence or a non-production instrument), `scripts/build_evaluation.py`, the advisory reusable
+  `evaluate.yml` workflow, `scripts/build_telemetry.py` with the `sk-build-quality` target, and the lane
+  playbook with worker, review and landing templates. No merge gate is added.
 - Card `859124d5`: publish sanitized versioned target, event, evaluation, and
   feedback handoff contracts with examples, adopter guidance, conformance
   checks, and pinned documentation CI.

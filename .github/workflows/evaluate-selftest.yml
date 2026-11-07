@@ -1,0 +1,27 @@
+name: SKRSI evaluate selftest
+
+# Exercises the reusable evaluate workflow on this repo's own PRs when it, or the
+# builder, changes. Advisory: it is not a required check and cannot fail the PR.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/evaluate*.yml"
+      - "scripts/build_evaluation.py"
+      - "examples/build-input/**"
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/evaluate.yml
+    with:
+      target_file: examples/target-v2.json
+      evidence_class: synthetic
+      skrsi_ref: ${{ github.event.pull_request.head.sha }}
+      bench_command: cp "$GITHUB_WORKSPACE/examples/build-input/metrics.json" "$SKRSI_METRICS_OUT"
+      baseline_command: cp "$GITHUB_WORKSPACE/examples/build-input/baseline.json" "$SKRSI_METRICS_OUT"

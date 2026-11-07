@@ -21,7 +21,7 @@ jobs:
     uses: ./.github/workflows/evaluate.yml
     with:
       target_file: examples/target-v2.json
-      evidence_class: live_labelled
+      evidence_class: synthetic
       skrsi_ref: ${{ github.event.pull_request.head.sha }}
       bench_command: cp "$GITHUB_WORKSPACE/examples/build-input/metrics.json" "$SKRSI_METRICS_OUT"
       baseline_command: cp "$GITHUB_WORKSPACE/examples/build-input/baseline.json" "$SKRSI_METRICS_OUT"

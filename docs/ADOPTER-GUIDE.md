@@ -140,6 +140,9 @@ What the first adopter learned, with the evidence in the [case study](./CASE-STU
   that it sees the change you care about.
 - **Only list invariants someone can assert.** `build_evaluation.py` already enforces distinct producer and evaluator, so
   listing that as a target invariant only adds a permanent missingness line.
+- **Never let SKRSI choose what a final gate runs.** Stage or test selection from SKRSI evidence belongs in a cheap tier
+  that a full gate still backstops. The skstacks plan is the model: suggestions for component runs, none for the
+  release gate.
 - **Filter on what the bench imports.** A path filter narrower than the code under test skips the PRs that matter.
 
 ### Use relative paths in `bench_command`

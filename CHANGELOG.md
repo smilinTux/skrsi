@@ -4,6 +4,13 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ## [Unreleased]
 
+### Documentation
+
+- Card `36e7cca0`: `docs/ARCHITECTURE.md` gains the Start here section and the four diagrams required by
+  sk-standards `ARCHITECTURE_AND_DATAFLOW_STANDARD` (context, components, data flow with classification and posture,
+  PR evaluation sequence), and invariant 7: SKRSI never selects what a final gate runs. The case study records the
+  skmemory live evaluations and the planned skstacks adoption. README lists adopters and links the site.
+
 ### Fixed
 
 - Card `b31ab30b`, from the first real adopter: a stop rule bound to an unmeasured metric no longer records a passed

@@ -13,6 +13,9 @@
 #   LANE_STATE_DIR    evidence/log dir. Default: $XDG_STATE_HOME/lane-land or ~/.local/state/lane-land.
 #                     Never /tmp: it can be wiped mid-run.
 #   EVIDENCE_REGEX    ERE that proves tests ran. Default: '[0-9]+ passed'.
+#   LAND_ROUND_CMD    command that records the landing round on your board, run with LAND_ROUND set to
+#                     "<pr> <head> PASS" (for example `coord link <card> review_round "$LAND_ROUND"`).
+#                     FAIL rounds are recorded by the orchestrator when the review returns, see the playbook.
 #   LAND_ACCEPT_CMD   command run after merge with LAND_REPO, LAND_PR, LAND_HEAD, LAND_MERGED
 #                     and LAND_LOG exported (record the landing on your board here).
 #   MAX_WAIT_POLLS    polls before giving up. Default 120. POLL_SECONDS between polls, default 30.
@@ -52,6 +55,9 @@ rm -f "$log.part"
 
 gh pr merge "$pr" --repo "$repo" --squash || { echo "ABORT merge failed"; exit 6; }
 merged=$(gh pr view "$pr" --repo "$repo" --json mergeCommit -q .mergeCommit.oid)
+if [ -n "${LAND_ROUND_CMD:-}" ]; then
+  LAND_ROUND="${pr} ${head} PASS" bash -c "$LAND_ROUND_CMD"
+fi
 if [ -n "${LAND_ACCEPT_CMD:-}" ]; then
   LAND_REPO=$repo LAND_PR=$pr LAND_HEAD=$head LAND_MERGED=$merged LAND_LOG=$log bash -c "$LAND_ACCEPT_CMD"
 fi

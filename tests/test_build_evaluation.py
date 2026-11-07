@@ -156,6 +156,20 @@ class Builder(Inputs):
         self.treat["instrument"]["baselines_named"] = []
         self.assertEqual(self.run_build()[0]["outcome"], "inconclusive")
 
+    def test_minimum_sample_size_in_the_target_caps_regression_and_pass(self):
+        self.target["invariants"] = [*self.target["invariants"], "min_sample_size: 20 merged PRs per window"]
+        self.treat["metrics"]["first_pass_review_rate"]["value"] = 0.4  # a real regression, but n=30 here
+        self.assertEqual(self.run_build()[0]["outcome"], "regression")
+        for side in (self.base, self.treat):
+            side["cohort"]["sample_size"] = 13
+        rec, md = self.run_build()
+        self.assertEqual(rec["outcome"], "inconclusive")
+        self.assertTrue(any("below the target minimum of 20" in m for m in rec["missingness"]))
+        self.assertIn("bound violated", md)  # still shown, only not judged
+        self.treat["metrics"]["first_pass_review_rate"]["value"] = 0.9
+        self.assertEqual(self.run_build()[0]["outcome"], "inconclusive")  # pass is capped too
+        self.assertFalse(any(g["name"].startswith("invariant:min_sample") for g in rec["guardrails"]))
+
     def test_flat_result_is_not_a_pass(self):
         for name in self.treat["metrics"]:
             self.treat["metrics"][name]["value"] = self.base["metrics"][name]["value"]

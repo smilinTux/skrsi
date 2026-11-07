@@ -31,6 +31,26 @@ Producer and reviewer identities differ. The evaluation contract encodes this as
 6. **Learn.** [`build_telemetry.py`](../scripts/build_telemetry.py) turns PR and board metadata into the
    `sk-build-quality` metrics so the next brief can change what the numbers say is slow or leaky.
 
+## Record every review round
+
+Build-quality metrics are only as honest as the record. Every review round, FAIL included, is recorded on the card
+the moment the review returns, in one line:
+
+```
+coord link <card> review_round "<pr> <head-sha> PASS|FAIL <class,class>"
+```
+
+Defect classes are an allowlist: `privacy`, `data-loss`, `false-close`, `non-hermetic-test`, `instrument-validity`,
+`concurrency`, `conflict-rebase`, `wrong-default`, `style`. A PASS round carries no class. The reviewer's last line
+(`ROUND: ...` in the review brief) is exactly this value, so the orchestrator records it verbatim; `land.sh` records the
+final PASS round through `LAND_ROUND_CMD`. A different board can use its own command, the format is what matters.
+
+`build_telemetry.py` reports first-pass rate and rounds to PASS only over PRs whose rounds are all recorded (last round
+PASS on the merged head, at least one record per reviewed head). A PR with no record is missing, never first-pass, and the
+report prints how many rounds were covered. Commits pushed after the first review are shown as a labelled proxy
+(`proxy_rework_rate`), never as the rate. `sk-build-quality` also states a minimum sample size (20 merged PRs); a smaller
+window is capped at `inconclusive` whatever the deltas say.
+
 ## Lessons, each with its check
 
 | Lesson | Rule | Where it is enforced |

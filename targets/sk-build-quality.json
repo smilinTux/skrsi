@@ -20,7 +20,8 @@
     "no prompt, PR body, review text or diff is collected",
     "a rate is reportable only while review evidence coverage is declared alongside it",
     "an unrecorded review is counted as missing, never as a first-pass success",
-    "review evidence coverage stays at or above 0.5"
+    "review evidence coverage stays at or above 0.5",
+    "min_sample_size: 20 merged PRs per window"
   ],
   "metrics": [
     "review_rounds_to_pass",

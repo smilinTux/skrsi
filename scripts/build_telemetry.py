@@ -20,8 +20,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-DEFECT_CLASSES = ("privacy", "false-close", "strawman-baseline", "dead-arm", "ci-parity", "live-state",
-                  "destructive", "other")
+DEFECT_CLASSES = ("privacy", "data-loss", "false-close", "non-hermetic-test", "instrument-validity",
+                  "concurrency", "conflict-rebase", "wrong-default", "style")
 DEFECT_LABELS = {f"defect:{c}" for c in DEFECT_CLASSES}
 CARD = re.compile(r"^card/([0-9a-f]{8})")
 INVARIANTS = ("no prompt, PR body, review text or diff is collected",
@@ -71,13 +71,19 @@ def load_events(coord_dir):
 def card_views(events):
     """Per source card: review cards, reviewed head SHAs, PASS verdict seen, first review time, labels."""
     src_of = {e["card_id"]: e["link_value"] for e in events if e.get("link_key") == "link_source_card"}
-    views = collections.defaultdict(lambda: {"heads": [], "pass": False, "first": None, "labels": set()})
+    views = collections.defaultdict(lambda: {"heads": [], "pass": False, "first": None, "labels": set(), "rounds": []})
     labels = collections.defaultdict(set)
     for e in events:
         if e.get("action") == "add_label":
             labels[e["card_id"]].add(e["label"])
         elif e.get("action") == "remove_label":
             labels[e["card_id"]].discard(e["label"])
+    for e in events:  # `coord link <card> review_round "<pr> <head> PASS|FAIL <class,class>"`
+        parts = str(e.get("link_value", "")).split() if e.get("link_key") == "review_round" else []
+        if len(parts) >= 3 and parts[0].isdigit() and parts[2] in ("PASS", "FAIL"):
+            views[e["card_id"]]["rounds"].append(
+                {"pr": int(parts[0]), "head": parts[1], "verdict": parts[2], "ts": e["ts"],
+                 "classes": [c for c in (parts[3].split(",") if len(parts) > 3 else []) if c in DEFECT_CLASSES]})
     for e in events:
         card = src_of.get(e["card_id"])
         if card is None:
@@ -103,20 +109,27 @@ def per_pr(pr, runs, views, reverted):
     # distinct pushed heads with a failed run: CI and Tests failing together on one push count once
     ci_failures = len({r["headSha"] for r in runs if r["conclusion"] == "failure" and r["event"] == "pull_request"
                        and opened <= ts(r["createdAt"]) <= merged}) if merged else None
-    post = None
-    heads = rounds = first_pass = None
+    heads = post = proxy_rework = covered = None
     if v and v["pass"] and v["first"]:
         heads = len(v["heads"]) or 1
         post = sum(1 for c in pr["commits"] if ts(c["committedDate"]) > v["first"])
-        rounds = max(heads, 1 + (post > 0))
-        first_pass = rounds == 1
-    defects = sorted({l["name"] for l in pr["labels"]} | (v["labels"] if v else set()))
+        proxy_rework = heads > 1 or post > 0  # a labelled PROXY, never the rate
+    rec = sorted((r for r in (v["rounds"] if v else []) if r["pr"] == pr["number"]), key=lambda r: r["ts"])
+    # covered only when the verdict record is complete: last round PASS on the merged head, and at least one
+    # record per reviewed head. Anything less is missing, never inferred from "one reviewed head".
+    if merged and rec and rec[-1]["verdict"] == "PASS" and (
+            pr["headRefOid"].startswith(rec[-1]["head"]) or rec[-1]["head"].startswith(pr["headRefOid"])) \
+            and len(rec) >= (heads or 1):
+        covered = len(rec)
+    labels = sorted({l["name"] for l in pr["labels"]} & DEFECT_LABELS)
+    classes = sorted({c for r in rec for c in r["classes"]} | {l[len("defect:"):] for l in labels})
     return {"pr": pr["number"], "card": card, "merged": bool(merged),
             "open_to_merge_hours": round((merged - opened).total_seconds() / 3600, 2) if merged else None,
-            "ci_failures_before_merge": ci_failures, "reviewed_heads": heads if v else None,
-            "post_review_commits": post, "review_rounds_to_pass": rounds, "first_pass": first_pass,
+            "ci_failures_before_merge": ci_failures, "reviewed_heads": heads,
+            "post_review_commits": post, "proxy_reworked": proxy_rework, "recorded_rounds": len(rec),
+            "review_rounds_to_pass": covered, "first_pass": None if covered is None else covered == 1,
             "reverted": pr["title"] in reverted if merged else None,
-            "defect_labels": [d for d in defects if d in DEFECT_LABELS]}
+            "defect_classes": classes if covered or classes else None}
 
 
 def compute(prs, runs, reverts, events):
@@ -124,25 +137,30 @@ def compute(prs, runs, reverts, events):
     reverted = {r["title"][len('Revert "'):-1] for r in reverts if r["title"].startswith('Revert "')}
     rows = [per_pr(p, runs.get(p["number"], []), views, reverted) for p in prs]
     merged = [r for r in rows if r["merged"]]
-    reviewed = [r for r in merged if r["review_rounds_to_pass"] is not None]
-    defects = collections.Counter(d for r in merged for d in r["defect_labels"])
+    reviewed = [r for r in merged if r["review_rounds_to_pass"] is not None]  # round records complete
+    passed = [r for r in merged if r["reviewed_heads"] is not None]  # PASS verdict seen on the board
+    defects = collections.Counter(d for r in merged for d in (r["defect_classes"] or []))
     mean = lambda xs: round(sum(xs) / len(xs), 3) if xs else None
     agg = {
-        "merged_prs": len(merged), "unmerged_prs": len(rows) - len(merged), "reviewed_prs": len(reviewed),
+        "merged_prs": len(merged), "unmerged_prs": len(rows) - len(merged), "pass_verdict_prs": len(passed),
+        "covered_rounds": sum(r["review_rounds_to_pass"] for r in reviewed), "round_covered_prs": len(reviewed),
+        "proxy_rework_rate": round(sum(r["proxy_reworked"] for r in passed) / len(passed), 3) if passed else None,
         "review_evidence_coverage_ratio": round(len(reviewed) / len(merged), 3) if merged else None,
         "review_rounds_to_pass": mean([r["review_rounds_to_pass"] for r in reviewed]),
         "first_pass_review_rate": round(sum(r["first_pass"] for r in reviewed) / len(reviewed), 3) if reviewed else None,
         "ci_failures_before_merge": mean([r["ci_failures_before_merge"] for r in merged]),
         "pr_open_to_merge_hours": round(statistics.median([r["open_to_merge_hours"] for r in merged]), 2) if merged else None,
         "reverted_merges": sum(1 for r in merged if r["reverted"]),
-        "defect_labels_total": sum(defects.values()) if defects else None,
-        "defect_class_counts": dict(defects) if defects else None}
+        "defect_labels_total": sum(defects.values()) if (defects or reviewed) else None,
+        "defect_class_counts": dict(defects) if (defects or reviewed) else None}
     derived = ("derivable: open-to-merge time, CI failures (distinct pushed heads with a failed pull_request run while the PR was open), "
-               "reviewed heads and PASS from coordination events, reverts by `Revert \"<title>\"` PR title.")
-    missing = ["FAIL review verdicts are never recorded in coordination (only PASS), so failed rounds are seen only "
-               "as extra reviewed heads or commits pushed after the first review event",
-               "review defect text is not read, so defect classes come only from allowlisted `defect:<class>` labels"
-               + ("; none carried one in this set, so defect counts are missing, not zero" if not defects else ""),
+               "verdict rounds recorded as `review_round` links, reverts by `Revert \"<title>\"` PR title.")
+    missing = ["review metrics use only PRs whose every round has a recorded `review_round` verdict; "
+               f"{len(reviewed)} of {len(merged)} merged PRs qualify, so rounds and first-pass are missing where none do. "
+               "A PR with no record is never counted as first-pass, and `proxy_rework_rate` (more than one reviewed head, "
+               "or a commit after the first review event) is a labelled proxy, not the rate",
+               "review text is not read; defect classes come only from recorded FAIL rounds and allowlisted `defect:<class>` labels"
+               + ("; none recorded in this set, so defect counts are missing, not zero" if not (defects or reviewed) else ""),
                "reverts committed straight to the default branch (no PR) are not seen"]
     return {"repo": agg, "cards": rows, "derivable": derived, "missing": missing}
 
@@ -171,9 +189,9 @@ def markdown(result, repo):
     out = [f"## Build quality for {repo}", "", "| metric | value |", "|---|---|"]
     out += [f"| {k} | {f(a[k])} |" for k in a if k != "defect_class_counts"]
     out += [f"| defect_class_counts | {f(a['defect_class_counts'])} |", "", "| PR | card | h to merge | CI fails | "
-            "rounds | first pass | reverted |", "|---|---|---|---|---|---|---|"]
+            "rounds | first pass / proxy rework | reverted |", "|---|---|---|---|---|---|---|"]
     out += [f"| {r['pr']} | {f(r['card'])} | {f(r['open_to_merge_hours'])} | {f(r['ci_failures_before_merge'])} | "
-            f"{f(r['review_rounds_to_pass'])} | {f(r['first_pass'])} | {f(r['reverted'])} |" for r in result["cards"]]
+            f"{f(r['review_rounds_to_pass'])} | {f(r['first_pass'])} / proxy {f(r['proxy_reworked'])} | {f(r['reverted'])} |" for r in result["cards"]]
     return "\n".join(out + ["", result["derivable"], "", "Missing:"] + [f"- {m}" for m in result["missing"]]) + "\n"
 
 

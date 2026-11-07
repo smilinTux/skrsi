@@ -25,6 +25,7 @@ CLASSES = ("synthetic", "live_self_retrieval", "live_labelled")
 OUTCOMES = ("pass", "fail", "blocked", "inconclusive", "regression")
 INSTRUMENT_KEYS = ("runs_production_code", "baselines_named", "sabotage_tested", "dead_arms_reported")
 COHORT_KEYS = ("id", "sample_size", "window_start", "window_end")
+MIN_SAMPLE = re.compile(r"^min_sample_size: (\d+)\b")  # a target invariant of this exact form states the floor
 ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,127}$")
 REF = re.compile(r"^[a-z0-9._-]+@[1-9][0-9]*$")
 TS = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$")
@@ -178,7 +179,10 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
     unknown = set(asserted) - set(target["invariants"])
     _need(not unknown, f"invariants not in target: {sorted(unknown)}")
     guards = [{"name": "independent_evaluator", "passed": True}]
+    min_n = max([int(m.group(1)) for inv in target["invariants"] if (m := MIN_SAMPLE.match(inv))] or [0])
     for inv in target["invariants"]:
+        if MIN_SAMPLE.match(inv):
+            continue
         if inv in asserted:
             guards.append({"name": f"invariant:{inv}", "passed": asserted[inv]})
         else:
@@ -191,7 +195,12 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
             (not inst["dead_arms_reported"], "cap: instrument does not report dead arms as dead"),
             (not inst["baselines_named"], "cap: no named baselines")]
     missing += [msg for hit, msg in caps if hit]
-    if regressed:
+    small = [c["id"] for c in cohorts if c["sample_size"] < min_n]
+    if small:
+        missing.append(f"cap: sample size below the target minimum of {min_n} in {', '.join(small)}")
+    if small:
+        outcome = "inconclusive"  # a noisy window never supports regression, fail or pass
+    elif regressed:
         outcome = "regression"
     elif not all(g["passed"] for g in guards):
         outcome = "fail"

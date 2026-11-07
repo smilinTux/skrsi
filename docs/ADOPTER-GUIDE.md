@@ -118,11 +118,14 @@ allowlisted `defect:<class>` label counts from `gh` and the coordination event l
 bodies, review text or diffs. Run it on two windows and feed both files to `build_evaluation.py` against
 `targets/sk-build-quality.json` to see whether builds got better.
 
-What it cannot derive stays missing: FAIL verdicts are not recorded on the board, so a failed review round is visible
-only as an extra reviewed head or a commit pushed after the first review event; review defect text is never read, so
-defect classes exist only where a PR or card carries an allowlisted label; direct pushes that revert are not seen.
+Review metrics need recorded rounds. Each round (FAIL included) is written as
+`coord link <card> review_round "<pr> <head> PASS|FAIL <class,class>"` (see the [lane playbook](./PLAYBOOK-LANES.md)).
+First-pass rate and rounds to PASS cover only PRs whose rounds are all recorded; the rest are missing and the count of
+covered rounds is printed. A reviewed-head or commit-after-review signal is a labelled proxy, never the rate. Review text
+is never read, and direct-push reverts are not seen. A target can state a floor with an invariant of the exact form
+`min_sample_size: <n> ...`; a window below it is capped at `inconclusive`.
 
-The allowlisted classes are `defect:privacy`, `defect:false-close`, `defect:strawman-baseline`, `defect:dead-arm`,
-`defect:ci-parity`, `defect:live-state`, `defect:destructive` and `defect:other`.
+Defect classes come from recorded FAIL rounds and from `defect:<class>` labels, over the allowlist `privacy`, `data-loss`,
+`false-close`, `non-hermetic-test`, `instrument-validity`, `concurrency`, `conflict-rebase`, `wrong-default`, `style`.
 
 See the [lane playbook](./PLAYBOOK-LANES.md) for the briefs and the landing script.

@@ -36,9 +36,11 @@ class LandTemplate(unittest.TestCase):
             gh.chmod(gh.stat().st_mode | stat.S_IEXEC)
             env = {**os.environ, "PATH": f"{gh.parent}:{os.environ['PATH']}", "FAKE_DIR": str(d),
                    "LANE_STATE_DIR": str(d / "state"), "MAX_WAIT_POLLS": "2", "POLL_SECONDS": "0",
+                   "LAND_ROUND_CMD": f'echo "$LAND_ROUND" > "{d}/round"',
                    "LAND_ACCEPT_CMD": f'echo "$LAND_MERGED" > "{d}/accepted"'}
             proc = subprocess.run(["bash", str(ROOT / "templates/land.sh"), "o/r", "7", reviewed],
                                   env=env, capture_output=True, text=True)
+            self.round = (d / "round").read_text().strip() if (d / "round").exists() else None
             return proc, (d / "merged").exists(), (d / "accepted").exists(), (d / "state").exists()
 
     @unittest.skipUnless(shutil.which("jq"), "jq needed to exercise the real status expression")
@@ -46,6 +48,7 @@ class LandTemplate(unittest.TestCase):
         done = [{"status": "COMPLETED", "conclusion": "SUCCESS"}, {"status": "COMPLETED", "conclusion": "SKIPPED"}]
         proc, merged, accepted, _ = self.run_land(done)
         self.assertEqual((proc.returncode, merged, accepted), (0, True, True), proc.stdout + proc.stderr)
+        self.assertEqual(self.round, "7 abc PASS")  # the landing round is recorded in the board format
 
         # an in-progress check has an empty conclusion: pending, never success
         proc, merged, *_ = self.run_land(done + [{"status": "IN_PROGRESS", "conclusion": ""}])

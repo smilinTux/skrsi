@@ -62,6 +62,12 @@ if [ ! -s "$log.part" ] && [ -n "${LOCAL_TEST_CMD:-}" ]; then
   drop_local() { git -C "$gitc" worktree remove --force "$ldir" 2>/dev/null || true; rm -rf "$ldir"; git -C "$gitc" worktree prune 2>/dev/null || true; }
   trap drop_local EXIT
   git -C "$gitc" worktree prune 2>/dev/null || true  # a killed earlier land leaves a stale registration
+  for old in "$state/${repo//\//_}-pr$pr-${head:0:12}"-*-localrun; do  # trees of dead lands of this PR and head only
+    [ -e "$old" ] || continue
+    opid=${old%-localrun}; opid=${opid##*-}
+    kill -0 "$opid" 2>/dev/null || { git -C "$gitc" worktree remove --force "$old" 2>/dev/null || true; rm -rf "$old"; }
+  done
+  git -C "$gitc" worktree prune 2>/dev/null || true
   drop_local
   git -C "$gitc" cat-file -e "$head^{commit}" 2>/dev/null || git -C "$gitc" fetch -q origin "$head" 2>/dev/null || true
   if aerr=$(git -C "$gitc" worktree add -q --detach "$ldir" "$head" 2>&1); then

@@ -24,21 +24,22 @@ jq -r "$expr" "$f"
 
 
 class LandTemplate(unittest.TestCase):
-    def run_land(self, rollup, head="abc", log="== 12 passed in 3s ==", reviewed="abc", extra=None, wt=None, cwd=None):
+    def run_land(self, rollup, head="abc", log="== 12 passed in 3s ==", reviewed="abc", extra=None, wt=None, cwd=None, keep=None):
         with tempfile.TemporaryDirectory() as d:
-            d = Path(d)
+            d = Path(keep or d)
+            d.mkdir(exist_ok=True)
             (d / "view.json").write_text(json.dumps({"headRefOid": head, "statusCheckRollup": rollup}))
             (d / "runs.json").write_text(json.dumps([{"databaseId": 1, "conclusion": "success"}]))
             (d / "log.txt").write_text(log)
             gh = d / "bin" / "gh"
-            gh.parent.mkdir()
+            gh.parent.mkdir(exist_ok=True)
             gh.write_text(FAKE_GH)
             gh.chmod(gh.stat().st_mode | stat.S_IEXEC)
             env = {**os.environ, "PATH": f"{gh.parent}:{os.environ['PATH']}", "FAKE_DIR": str(d),
                    "LANE_STATE_DIR": str(d / "state"), "MAX_WAIT_POLLS": "2", "POLL_SECONDS": "0",
                    "LAND_ROUND_CMD": f'echo "$LAND_ROUND" > "{d}/round"',
                    "LAND_ACCEPT_CMD": f'echo "$LAND_MERGED" > "{d}/accepted"', **(extra or {})}
-            proc = subprocess.run(["bash", str(ROOT / "templates/land.sh"), "o/r", "7", reviewed, *([wt] if wt else [])],
+            proc = subprocess.run(["bash", os.environ.get("LAND_SH_UNDER_TEST", str(ROOT / "templates/land.sh")), "o/r", "7", reviewed, *([wt] if wt else [])],
                                   env=env, capture_output=True, text=True, cwd=cwd)
             calls = (d / "calls").read_text() if (d / "calls").exists() else ""
             self.merge_call = next((c for c in calls.splitlines() if c.startswith("pr merge")), "")
@@ -112,12 +113,24 @@ class LandTemplate(unittest.TestCase):
         proc, merged, *_ = run('echo "=== 10 passed, 3 skipped in 1s ==="')
         self.assertEqual((proc.returncode, merged), (0, True), proc.stdout + proc.stderr)
 
-        # a stale registration (tree deleted without worktree remove) must not break the next land
-        stale = Path(tempfile.mkdtemp()) / "stale-localrun"
-        subprocess.run(["git", "-C", str(r), "worktree", "add", "-q", "--detach", str(stale), sha], check=True)
-        shutil.rmtree(stale)
-        proc, merged, *_ = run('echo "=== 2 passed in 1s ==="')
+        # round-1 defect: land.sh SIGKILLed mid-run leaves its detached worktree registered, trap never runs
+        keep = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, keep, True)
+        w1 = self.make_pr_worktree(r, 50)
+        kw = dict(log="nothing ran", reviewed=sha, head=sha, cwd=str(r), keep=str(keep))
+        # the command's parent is land.sh's command-substitution subshell; its parent is land.sh itself
+        killer = 'kill -9 $(ps -o ppid= -p $PPID | tr -d " ")'
+        proc, merged, *_ = self.run_land(done, extra={"LOCAL_TEST_CMD": killer}, wt=str(w1), **kw)
+        self.assertEqual((proc.returncode, merged), (-9, False), proc.stdout + proc.stderr)
+        listed = subprocess.run(["git", "-C", str(r), "worktree", "list", "--porcelain"], capture_output=True, text=True).stdout
+        self.assertIn("localrun", listed)  # the killed land really left its registration behind
+        w2 = self.make_pr_worktree(r, 51)
+        proc, merged, *_ = self.run_land(done, extra={"LOCAL_TEST_CMD": 'echo "=== 2 passed in 1s ==="'}, wt=str(w2), **kw)
         self.assertEqual((proc.returncode, merged), (0, True), proc.stdout + proc.stderr)
+        self.assertIn("(local run)", self.evidence)
+        listed = subprocess.run(["git", "-C", str(r), "worktree", "list", "--porcelain"], capture_output=True, text=True).stdout
+        self.assertNotIn("prunable", listed)
+        self.assertNotIn("localrun", listed)
 
         # an unusable head gives a clear reason, not a silent exit 5
         proc, merged, *_ = self.run_land(done, log="nothing ran", reviewed="f" * 40, head="f" * 40,

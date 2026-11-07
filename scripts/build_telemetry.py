@@ -154,7 +154,7 @@ def metrics_file(result, cohort_id):
             "pr_open_to_merge_hours": ("hours", "lower", noise),
             "reverted_merges": ("merges", "lower", {"max": 0, "stop_rule": "reverted-merge"}),
             "defect_labels_total": ("labels", "lower", {}),
-            "review_evidence_coverage_ratio": ("ratio", "higher", {"min": 0.5, "stop_rule": "coverage-floor"})}
+            "review_evidence_coverage_ratio": ("ratio", "higher", {**noise, "min": 0.5, "stop_rule": "coverage-floor"})}
     return {"cohort": {"id": cohort_id, "sample_size": result["repo"]["merged_prs"],
                        "window_start": "1970-01-01T00:00:00Z", "window_end": "1970-01-01T00:00:00Z"},  # real window set in main
             "invariants": {INVARIANTS[0]: True, INVARIANTS[1]: True, INVARIANTS[2]: True,

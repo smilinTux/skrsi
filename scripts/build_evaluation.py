@@ -156,14 +156,16 @@ def build(target, baseline, metrics, *, producer, evaluator, evidence_class, now
         _need(b is None or t is None or b["direction"] == t["direction"], f"{name}: direction differs between sides")
         bv, tv = (b or {}).get("value"), (t or {}).get("value")
         status, delta = _judge(bv, tv, spec)
-        hit = status == "regressed"
-        if tv is not None and ((("min" in spec) and tv < spec["min"]) or (("max" in spec) and tv > spec["max"])):
-            hit, status = True, "bound violated"
+        worse = status == "regressed"
+        bounded = "min" in spec or "max" in spec
+        out_of_bounds = tv is not None and (tv < spec.get("min", tv) or tv > spec.get("max", tv))
+        if out_of_bounds:
+            status = "bound violated"
         sid = spec.get("stop_rule")
         if sid:
             _need(sid in rules, f"{name}: stop_rule {sid!r} is not in the target")
             bound_rules.add(sid)
-            if hit:
+            if out_of_bounds if bounded else worse:  # a declared bound is the rule's condition; else any regression
                 triggered[sid] = name
         for side, v in (("baseline", bv), ("treatment", tv)):
             if v is None:

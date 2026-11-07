@@ -1,0 +1,143 @@
+name: SKRSI evaluate
+
+# Reusable, advisory workflow. It runs a caller-provided bench, builds a
+# skrsi.evaluation.v4 record, uploads it and upserts one PR comment. It never
+# fails the caller: every step is continue-on-error and the job is too. It is
+# not a required check and must not be made one.
+#
+# Caller (one file, plus a target file):
+#   jobs:
+#     skrsi:
+#       permissions: {contents: read, pull-requests: write}
+#       uses: smilinTux/skrsi/.github/workflows/evaluate.yml@main
+#       with:
+#         target_file: skrsi/targets/my-target.json
+#         evidence_class: synthetic
+#         bench_command: python -m my_pkg.bench --skrsi-out "$SKRSI_METRICS_OUT"
+
+on:
+  workflow_call:
+    inputs:
+      target_file:
+        description: Path to a skrsi.target.v2 JSON file in the caller repo.
+        type: string
+        required: true
+      bench_command:
+        description: Shell command that writes the metrics JSON to $SKRSI_METRICS_OUT. Run on the PR head.
+        type: string
+        required: true
+      baseline_command:
+        description: Same instrument at the PR base commit (defaults to bench_command, so both sides are measured alike).
+        type: string
+        default: ""
+      evidence_class:
+        description: synthetic, live_self_retrieval or live_labelled.
+        type: string
+        required: true
+      setup_command:
+        description: Optional install step run in the head and base checkouts before the bench.
+        type: string
+        default: ""
+      skrsi_ref:
+        description: Ref of smilinTux/skrsi that supplies the scripts. Pin a commit to freeze behaviour.
+        type: string
+        default: main
+      timeout_minutes:
+        type: number
+        default: 15
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      SKRSI_METRICS_OUT: ${{ github.workspace }}/skrsi-out/metrics.json
+      SKRSI_BASELINE_OUT: ${{ github.workspace }}/skrsi-out/baseline.json
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        continue-on-error: true
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        continue-on-error: true
+        with:
+          repository: smilinTux/skrsi
+          ref: ${{ inputs.skrsi_ref }}
+          path: .skrsi-tools
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        continue-on-error: true
+        with:
+          python-version: "3.12"
+      - name: Bench on the PR head
+        continue-on-error: true
+        env:
+          SETUP: ${{ inputs.setup_command }}
+          BENCH: ${{ inputs.bench_command }}
+        run: |
+          mkdir -p skrsi-out
+          if [ -n "$SETUP" ]; then bash -c "$SETUP"; fi
+          bash -c "$BENCH"
+      - name: Bench on the PR base (same instrument)
+        continue-on-error: true
+        env:
+          SETUP: ${{ inputs.setup_command }}
+          BENCH: ${{ inputs.baseline_command || inputs.bench_command }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git worktree add --detach .skrsi-base "$BASE_SHA"
+          cd .skrsi-base
+          export SKRSI_METRICS_OUT="$SKRSI_BASELINE_OUT"
+          if [ -n "$SETUP" ]; then bash -c "$SETUP"; fi
+          bash -c "$BENCH"
+      - name: Build evaluation
+        id: build
+        continue-on-error: true
+        env:
+          TARGET: ${{ inputs.target_file }}
+          CLASS: ${{ inputs.evidence_class }}
+          PRODUCER: ${{ github.event.pull_request.user.login || github.actor }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mkdir -p skrsi-out
+          for f in "$SKRSI_METRICS_OUT" "$SKRSI_BASELINE_OUT"; do
+            [ -s "$f" ] || echo '{"metrics":{}}' > "$f"
+          done
+          python .skrsi-tools/scripts/build_evaluation.py --target "$TARGET" \
+            --baseline "$SKRSI_BASELINE_OUT" --metrics "$SKRSI_METRICS_OUT" \
+            --producer "$PRODUCER" --evaluator skrsi-evaluate --evidence-class "$CLASS" \
+            --baseline-id "base-${BASE_SHA:0:7}" --treatment-id "head-${HEAD_SHA:0:7}" \
+            --out skrsi-out/evaluation.json --md skrsi-out/evaluation.md
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        continue-on-error: true
+        with:
+          name: skrsi-evaluation
+          path: skrsi-out/
+          if-no-files-found: ignore
+      - name: Upsert PR comment
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          TARGET: ${{ inputs.target_file }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          marker="<!-- skrsi-evaluate:$TARGET -->"
+          body="$marker"$'\n'
+          if [ -s skrsi-out/evaluation.md ]; then body+="$(cat skrsi-out/evaluation.md)"
+          else body+="SKRSI could not produce an evaluation for this run (advisory, nothing is blocked). See $RUN_URL"; fi
+          body+=$'\n'"[evaluation artifact]($RUN_URL)"
+          id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq "[.[] | select(.body | startswith(\"$marker\"))][0].id // empty")
+          if [ -n "$id" ]; then gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$body"
+          else gh api -X POST "repos/$REPO/issues/$PR/comments" -f body="$body"; fi

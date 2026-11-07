@@ -1,0 +1,59 @@
+{
+  "schema": "skrsi.target.v2",
+  "target_id": "sk-build-quality",
+  "revision": 1,
+  "status": "active",
+  "owner": "lifecycle-team",
+  "scope": {
+    "products": [
+      "any-repo-using-the-lane-playbook"
+    ],
+    "event_types": [
+      "pull_request.opened",
+      "pull_request.merged",
+      "check_run.completed",
+      "coordination.review_verdict"
+    ]
+  },
+  "objective": "Merge reviewed changes faster and with fewer review rounds and CI failures, without losing review evidence coverage or shipping changes that later get reverted.",
+  "invariants": [
+    "no prompt, PR body, review text or diff is collected",
+    "a rate is reportable only while review evidence coverage is declared alongside it",
+    "an unrecorded review is counted as missing, never as a first-pass success",
+    "review evidence coverage stays at or above 0.5"
+  ],
+  "metrics": [
+    "review_rounds_to_pass",
+    "first_pass_review_rate",
+    "ci_failures_before_merge",
+    "pr_open_to_merge_hours",
+    "reverted_merges",
+    "defect_labels_total",
+    "review_evidence_coverage_ratio"
+  ],
+  "stop_rules": [
+    {
+      "id": "coverage-floor",
+      "condition": "review_evidence_coverage_ratio is below 0.5, so the review rates describe a minority of merged changes.",
+      "action": "pause",
+      "owner": "lifecycle-team"
+    },
+    {
+      "id": "reverted-merge",
+      "condition": "reverted_merges is above 0 in the window: re-read that change's review evidence before trusting speed gains.",
+      "action": "pause",
+      "owner": "lifecycle-team"
+    },
+    {
+      "id": "speed-bought-with-quality",
+      "condition": "pr_open_to_merge_hours falls while first_pass_review_rate or review_rounds_to_pass worsens.",
+      "action": "pause",
+      "owner": "lifecycle-team"
+    }
+  ],
+  "expires_at": "2027-05-01T00:00:00Z",
+  "rollback": {
+    "trigger": "any invariant failure or stop rule",
+    "owner": "lifecycle-team"
+  }
+}

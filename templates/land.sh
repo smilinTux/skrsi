@@ -19,6 +19,11 @@
 #                     FAIL rounds are recorded by the orchestrator when the review returns, see the playbook.
 #   LAND_ACCEPT_CMD   command run after merge with LAND_REPO, LAND_PR, LAND_HEAD, LAND_MERGED
 #                     and LAND_LOG exported (record the landing on your board here).
+#   LOCAL_TEST_CMD   opt-in, for repos with no CI test workflow. Only when CI produced no test evidence: the EXACT reviewed
+#                     head is checked out into a detached worktree under $LANE_STATE_DIR (never the PR worktree, so local
+#                     edits cannot leak in), the command runs there, and its pytest summary line (`=== N passed ... ===`,
+#                     no failed/error) becomes evidence marked "(local run)". The command is logged. A failing run exits 5.
+#                     The worktree is removed afterwards. Unset: behaviour unchanged (exit 5).
 #   MAX_WAIT_POLLS    polls before giving up. Default 120. POLL_SECONDS between polls, default 30.
 # Exit: 0 landed, 2 head moved, 3 CI failed, 4 CI timeout, 5 no test evidence, 6 merge failed.
 set -euo pipefail
@@ -50,8 +55,37 @@ for run in $(gh run list --repo "$repo" --commit "$head" --limit 40 --json datab
     -q '.[] | select(.conclusion == "success") | .databaseId'); do
   gh run view "$run" --repo "$repo" --log 2>/dev/null | { grep -E "$regex" || true; } >>"$log.part"
 done
+localnote=""
+if [ ! -s "$log.part" ] && [ -n "${LOCAL_TEST_CMD:-}" ]; then
+  ldir="$state/${repo//\//_}-pr$pr-${head:0:12}-$$-localrun"  # per PR, head and PID: concurrent lands never share a tree
+  gitc=${wt:-.}
+  drop_local() { git -C "$gitc" worktree remove --force "$ldir" 2>/dev/null || true; rm -rf "$ldir"; git -C "$gitc" worktree prune 2>/dev/null || true; }
+  trap drop_local EXIT
+  git -C "$gitc" worktree prune 2>/dev/null || true  # a killed earlier land leaves a stale registration
+  for old in "$state/${repo//\//_}-pr$pr-${head:0:12}"-*-localrun; do  # trees of dead lands of this PR and head only
+    [ -e "$old" ] || continue
+    opid=${old%-localrun}; opid=${opid##*-}
+    kill -0 "$opid" 2>/dev/null || { git -C "$gitc" worktree remove --force "$old" 2>/dev/null || true; rm -rf "$old"; }
+  done
+  git -C "$gitc" worktree prune 2>/dev/null || true
+  drop_local
+  git -C "$gitc" cat-file -e "$head^{commit}" 2>/dev/null || git -C "$gitc" fetch -q origin "$head" 2>/dev/null || true
+  if aerr=$(git -C "$gitc" worktree add -q --detach "$ldir" "$head" 2>&1); then
+    lout=$( cd "$ldir" && bash -c "$LOCAL_TEST_CMD" 2>&1 ) && lrc=0 || lrc=$?
+    drop_local
+    if [ "$lrc" -eq 0 ]; then
+      { grep -E '^=+ .*[0-9]+ passed.* =+$' <<<"$lout" || true; } | { grep -E '(^|[^0-9])[1-9][0-9]* passed' || true; } \
+        | { grep -viE 'failed|error' || true; } | sed 's/$/ (local run)/' >"$log.part"
+      localnote="local_test_cmd=$LOCAL_TEST_CMD"
+    fi
+  else
+    echo "ABORT local run: could not check out $head into $ldir: $aerr"
+  fi
+  drop_local
+  trap - EXIT
+fi
 [ -s "$log.part" ] || { rm -f "$log.part"; echo "ABORT no test evidence for $head (a conflicting PR runs no tests)"; exit 5; }
-{ echo "repo=$repo pr=$pr commit=$head"; sort -u "$log.part"; } >"$log"
+{ echo "repo=$repo pr=$pr commit=$head"; [ -z "$localnote" ] || echo "$localnote"; sort -u "$log.part"; } >"$log"
 rm -f "$log.part"
 
 gh pr merge "$pr" --repo "$repo" --squash --match-head-commit "$head" || { echo "ABORT merge failed"; exit 6; }

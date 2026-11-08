@@ -34,8 +34,24 @@ report. A fixture may be wrong: say so with reasoning, and regenerate it through
 - If you add an instrument (a bench, a metric, a gate), see "Instruments" below.
 - Run the formatter and linter on changed files, rebase on `origin/main` before pushing, add a changelog fragment when
   the repo convention asks for one, no new dependencies, keep to the card's scope.
+- Agent rules live in `AGENTS.md` only. Never create or edit a `CLAUDE.md` (or any other per-tool instruction file);
+  if a rebase hits an edit of one, carry that edit into `AGENTS.md`.
+- Rebase on `origin/main` first and again before pushing: sibling lanes edit nearby code. If your base PR was
+  squash-merged, do not merge main into the branch: `git rebase --onto origin/main <last-squashed-commit>`, then
+  retarget the PR to main.
 - Only regular hyphens in prose, no em or en dashes. Commit trailer names the agent that did the work.
 - Open the PR with a conventional-commit title carrying the card code. Do not wait for CI. Do not merge.
+
+## Rust lanes
+- Build and test on the build host, not on a small local machine: `<REMOTE_TEST_CMD> <worktree> [cargo args]`
+  (the [`remote-test.sh`](./remote-test.sh) template). Edit locally; the runner rsyncs the worktree (no `.git`, no
+  `target`), shares one target directory, and serves database tests from a THROWAWAY container on a non-default port.
+  Never use the runner to touch anything else on the host, a real database included.
+- Before pushing, all four must pass: `fmt --check`, `clippy --locked --all-targets` with the database feature
+  `-- -D warnings`, `test` pure (no database feature), and `test` with the database feature. The database tests must
+  be required to run, not skipped, in the last one.
+- CI also builds the minimum supported Rust version (`<MSRV>`): do not use language or library features newer than it.
+- Parity is checked against the reference implementation's `origin/main` (read only), `<PARITY_REPO_PATH>`.
 
 ## Instruments (benchmarks, metrics, gates)
 1. The candidate arm must run PRODUCTION code, not a reimplementation. Show a sabotage test: break the production path

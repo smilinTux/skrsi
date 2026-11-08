@@ -4,6 +4,24 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- `templates/merge.sh`: merge a reviewed PR without a board, with the same gates as `land.sh`.
+- `templates/remote-test.sh`: generic remote Rust build and test runner (rsync, shared target directory, throwaway
+  tmpfs Postgres on a non-default loopback port, disk floor). Host, ports, image and env are parameters.
+
+### Changed
+
+- `templates/land.sh`: the check rollup is deduplicated to the latest run per (workflow, check name), so cancelled
+  duplicates from re-runs or retargets no longer abort a land; waits for the reported head to equal the reviewed head
+  after a push (`HEAD_WAIT_POLLS`); evidence also accepts cargo `test result: ok. N passed; 0 failed` (default
+  `EVIDENCE_REGEX` now requires at least one pass); waits for CI on the merged commit (exit 7); retries the accept hook
+  once against the merged commit when change lines are identical; `LAND_READBACK_CMD` reads the accepted state back
+  (exit 9); a bare repo name is accepted with `LANE_REPO_OWNER`.
+- Worker brief: Rust lane gates, `AGENTS.md` only, squash-merge rebase recipe. Review brief: remote runner item,
+  vacuous dual-engine leg check, tests must fail without the fix, dash rule.
+- `docs/PLAYBOOK-LANES.md`: landing kit table and the lessons behind the new gates.
+
 ### Documentation
 
 - Card `36e7cca0`: `docs/ARCHITECTURE.md` gains the Start here section and the four diagrams required by

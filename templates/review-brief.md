@@ -11,6 +11,9 @@ You did not write this code. Decide whether it should merge. Be adversarial but 
 5. Never touch a real store. Declared agent or profile variables make a bare constructor open live state, so point
    every home variable at scratch.
 6. Execute any SQL or query you could execute on a throwaway database. Unexecuted SQL you could have run is blocking.
+7. Rust PRs: build and test on the build host with the remote runner (`<REMOTE_TEST_CMD> <checkout> [cargo args]`,
+   the `remote-test.sh` template), not on a small local machine. Run `fmt --check`, `clippy` with the database
+   feature `-D warnings`, the pure test run and the database test run.
 
 ## Attack these paths first
 - **Privacy**: can a non-owner reader see an item on a live-like store (real schema, real audience rows, not a mock)?
@@ -20,9 +23,14 @@ You did not write this code. Decide whether it should merge. Be adversarial but 
   baseline fair (grep per token, not per phrase)? Does a dead arm report dead rather than zero? Is the evidence class
   declared, and is synthetic evidence presented as a pass?
 - **CI parity**: does it pass with the services CI lacks absent?
-- **Tests fail without the fix**: revert the production change and confirm a test goes red.
+- **Tests fail without the fix**: revert the production change and confirm a test goes red. A test that passes both
+  ways is blocking.
+- **Vacuous dual-engine legs**: when a test runs the same assertions against two engines (for example a local engine
+  and a database engine), count the real calls each leg makes into its engine. A leg that silently falls back, skips
+  or never reaches the engine passes while proving nothing.
 - Other callers of any changed signature, data loss on existing stores, mixed-version nodes, PR claims against the code,
-  fixture expected values that were never verified, em or en dashes in added lines.
+  fixture expected values that were never verified, and em or en dashes in added lines (a defect in any file, code,
+  docs, comments and commit messages included; regular hyphens are fine).
 
 ## Verdict (under 150 words)
 First line exactly `VERDICT: PASS` or `VERDICT: FAIL`, then a line `ROUND: <pr> <head-sha> PASS|FAIL <class,class>`

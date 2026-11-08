@@ -62,7 +62,8 @@ flowchart TD
       docs["docs.yml<br/>required check: validate"]
     end
     subgraph lanes[Lane templates]
-      land["templates/land.sh"]
+      land["templates/land.sh and merge.sh"]
+      remote["templates/remote-test.sh"]
       briefs["worker and review briefs"]
     end
     evaluate --> build

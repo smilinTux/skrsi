@@ -14,7 +14,7 @@ d=$FAKE_DIR; echo "$*" >>"$d/calls"
 expr=""; for ((i=1;i<=$#;i++)); do [ "${!i}" = "-q" ] && { j=$((i+1)); expr=${!j}; }; done
 case "$1 $2" in
   "pr view") f=$d/view.json ;;
-  "run list") f=$d/runs.json ;;
+  "run list") f=$d/runs.json; [[ "$*" == *"--commit deadbeef"* && -f $d/runs-merged.json ]] && f=$d/runs-merged.json ;;
   "run view") cat "$d/log.txt"; exit 0 ;;
   "pr merge") echo merged >>"$d/merged"; exit 0 ;;
 esac
@@ -24,13 +24,15 @@ jq -r "$expr" "$f"
 
 
 class LandTemplate(unittest.TestCase):
-    def run_land(self, rollup, head="abc", log="== 12 passed in 3s ==", reviewed="abc", extra=None, wt=None, cwd=None, keep=None, runs=None, script="land.sh", args=None):
+    def run_land(self, rollup, head="abc", log="== 12 passed in 3s ==", reviewed="abc", extra=None, wt=None, cwd=None, keep=None, runs=None, merged_runs=None, script="land.sh", args=None):
         with tempfile.TemporaryDirectory() as d:
             d = Path(keep or d)
             d.mkdir(exist_ok=True)
             (d / "view.json").write_text(json.dumps({"headRefOid": head, "statusCheckRollup": rollup}))
             (d / "runs.json").write_text(json.dumps(runs or [{"databaseId": 1, "status": "completed", "conclusion": "success"}]))
             (d / "log.txt").write_text(log)
+            if merged_runs is not None:
+                (d / "runs-merged.json").write_text(json.dumps(merged_runs))
             gh = d / "bin" / "gh"
             gh.parent.mkdir(exist_ok=True)
             gh.write_text(FAKE_GH)
@@ -164,11 +166,12 @@ class LandTemplate(unittest.TestCase):
         proc, merged, *_ = self.run_land(done, log="test result: ok. 0 passed; 0 failed")
         self.assertEqual((proc.returncode, merged), (5, False))
         # base CI red after the merge: merged, hook not run, exit 7
-        proc, merged, accepted, _ = self.run_land(done, runs=[{"databaseId": 1, "status": "completed", "conclusion": "failure"}])
-        self.assertEqual((proc.returncode, merged, accepted), (7, False, False), proc.stdout)
-        proc, merged, accepted, _ = self.run_land(done, runs=[{"databaseId": 1, "status": "in_progress", "conclusion": None}],
-                                                  extra={"POST_MERGE_CI": "0"})
-        self.assertEqual((proc.returncode, accepted), (5, False))  # no successful run: no evidence, unchanged
+        proc, merged, accepted, _ = self.run_land(done, merged_runs=[{"status": "completed", "conclusion": "failure"}])
+        self.assertEqual((proc.returncode, merged, accepted), (7, True, False), proc.stdout)
+        proc, merged, accepted, _ = self.run_land(done, merged_runs=[{"status": "in_progress", "conclusion": None}])
+        self.assertEqual((proc.returncode, accepted), (7, False), proc.stdout)  # still running at the deadline
+        proc, merged, accepted, _ = self.run_land(done, merged_runs=[{"status": "completed", "conclusion": "failure"}], extra={"POST_MERGE_CI": "0"})
+        self.assertEqual((proc.returncode, accepted), (0, True))
         # a bare repo name needs the owner variable
         proc, merged, *_ = self.run_land(done, args=["r"])
         self.assertNotEqual(proc.returncode, 0)
@@ -197,7 +200,7 @@ class LandTemplate(unittest.TestCase):
         self.assertEqual((proc.returncode, merged), (2, False))
         proc, merged, *_ = self.run_land([], script="merge.sh")  # no checks at all
         self.assertEqual((proc.returncode, merged), (5, False))
-        proc, merged, *_ = self.run_land([ok], script="merge.sh", runs=[{"status": "completed", "conclusion": "failure"}])
+        proc, merged, *_ = self.run_land([ok], script="merge.sh", merged_runs=[{"status": "completed", "conclusion": "failure"}])
         self.assertEqual((proc.returncode, merged), (7, True))
 
 
@@ -210,7 +213,7 @@ class RemoteRunner(unittest.TestCase):
             home = d / "home"
             home.mkdir()
             # ssh fake: ignores options and host, runs the remote command locally as the "remote" shell
-            (bin_ / "ssh").write_text('#!/usr/bin/env bash\nwhile [ "${1:0:1}" = "-" ]; do shift; [ "$1" = "BatchMode=yes" ] && shift; done\nshift\nexec "$@"\n')
+            (bin_ / "ssh").write_text('#!/usr/bin/env bash\nwhile [ "${1:0:1}" = "-" ]; do shift; [ "$1" = "BatchMode=yes" ] && shift; done\nshift\nexec bash -c "$*"\n')
             (bin_ / "rsync").write_text('#!/usr/bin/env bash\necho "rsync $*" >>"$FAKE_DIR/calls"\n')
             (bin_ / "cargo").write_text('#!/usr/bin/env bash\necho "cargo $* DSN=${MYDSN:-} T=${CARGO_TARGET_DIR} FLAG=${FLAG:-} SECRET=${SECRET:-unset}" >>"$FAKE_DIR/calls"\n')
             (bin_ / "docker").write_text('#!/usr/bin/env bash\necho "docker $*" >>"$FAKE_DIR/calls"\n')

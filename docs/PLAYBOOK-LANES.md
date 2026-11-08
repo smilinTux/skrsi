@@ -26,8 +26,10 @@ Producer and reviewer identities differ. The evaluation contract encodes this as
 3. **Evidence.** The advisory [`evaluate.yml`](../.github/workflows/evaluate.yml) runs the repo's bench on the head and
    the base, builds a `skrsi.evaluation.v4` record, and upserts one PR comment. It never fails the PR.
 4. **Review.** A different agent reviews the exact head SHA.
-5. **Land.** [`land.sh`](../templates/land.sh) refuses unless the head is the reviewed head, every check is concluded
-   green, and pytest-style evidence exists, then squash-merges and runs an optional board hook.
+5. **Land.** [`land.sh`](../templates/land.sh) refuses unless the head is the reviewed head, every check (latest run
+   per check) is concluded green, and test evidence exists, then squash-merges, waits for CI on the merged commit, runs
+   an optional board hook and reads the accepted state back. [`merge.sh`](../templates/merge.sh) is the same gate
+   without a board, for PRs that must merge but not accept a card.
 6. **Learn.** [`build_telemetry.py`](../scripts/build_telemetry.py) turns PR and board metadata into the
    `sk-build-quality` metrics so the next brief can change what the numbers say is slow or leaky.
 
@@ -70,10 +72,32 @@ window is capped at `inconclusive` whatever the deltas say.
 | Rule-only classifiers must not destroy | A classifier with no positive store evidence may only propose; deletes, closes and supersedes need evidence | Worker and review briefs |
 | Globs delete the wrong thing | Cleanup removes exact paths only | Briefs, `land.sh` |
 | Uncommitted work is not saved | Commit before the long verification, never gate a commit on a background job | Worker brief |
-| A repo with no CI tests | Land with `LOCAL_TEST_CMD` on the exact reviewed head in a detached worktree, never from the worker's tree | `land.sh` |
+| Re-runs and retargets leave cancelled duplicates | The check rollup holds every run of a check. Reduce it to the latest run per (workflow, check name) before judging it | `land.sh` and `merge.sh`, covered by a test |
+| GitHub lags a push | After you push a rebase, the PR head the API reports is stale for seconds. Wait for it to equal the head you mean to land, then abort if it never does | `HEAD_WAIT_POLLS` in both scripts |
+| A merge can still race | A push between the last poll and the merge lands an unreviewed head | `--match-head-commit` |
+| Green on the PR is not green on main | Wait for CI on the merged commit; a red base after merge leaves the card open | `land.sh` exit 7 |
+| Success is not the stored state | Read the accepted card status back by a different path than the one that wrote it | `LAND_READBACK_CMD` |
+| Rust CI prints no pytest line | Evidence also accepts cargo `test result: ok. N passed; 0 failed` with N of at least 1 | `EVIDENCE_REGEX` default |
+| Squash merges break stacked PRs | After the base PR is squash-merged, the child still carries the original commits and conflicts. Do not merge main into it: `git rebase --onto origin/main <last-squashed-commit>`, push, then retarget the PR to main | Worker brief |
+| The repo argument has one shape | The scripts take `OWNER/NAME`; a bare name is prefixed only when `LANE_REPO_OWNER` is set. A kit that prefixes the owner itself takes the bare name, and passing the full form builds a doubled owner that fails late | `land.sh` and `merge.sh` header |
+| A dual-engine test can be vacuous | A test that runs one assertion set against two engines proves nothing for a leg that never reaches its engine. The reviewer counts the real engine calls per leg | Review brief |
+| Small laptops cannot carry Rust lanes | Build and test on a bigger host with one shared target directory and a throwaway database on a non-default port, with a disk floor | [`remote-test.sh`](../templates/remote-test.sh) |
+| Per-tool instruction files drift | Agent rules live in `AGENTS.md` only; carry a rebase conflict in another file into it | Worker brief |
+| A repo with no CI tests | Land with `LOCAL_TEST_CMD` (pytest or cargo summary) on the exact reviewed head in a detached worktree, never from the worker's tree | `land.sh` |
 | An evidence PR is not the card | A PR that records evidence for a card (such as an SKRSI evaluation) merges without accepting the card; the board hook runs only for the PR that completes the card | `land.sh` board hook |
 | Docs that contradict the code | A changelog or README line describing removed behaviour is a review defect, class `doc-drift` | Review brief |
 | A criterion below the noise floor | Before writing a numeric acceptance criterion, measure the bench's run-to-run noise; a threshold smaller than the noise or than 1/N cannot be met or failed honestly | Target `noise` field; card template |
+
+## Landing kit
+
+| Script | Use |
+|---|---|
+| [`land.sh`](../templates/land.sh) | Land the PR that completes a card: gates, merge, base CI wait, board hook, readback |
+| [`merge.sh`](../templates/merge.sh) | Merge a reviewed PR that completes no card, same gates, no board |
+| [`remote-test.sh`](../templates/remote-test.sh) | Run cargo for a worktree on a build host with a throwaway database |
+
+All three take their host, ports, image, state directory and hooks from environment variables and carry no host,
+address, credential or personal path. Copy them into your orchestration directory and set the variables there.
 
 ## Adopting SKRSI in a repo
 

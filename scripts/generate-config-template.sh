@@ -7,11 +7,12 @@
 # Usage:
 #   scripts/generate-config-template.sh <output-dir>
 #
-# <output-dir> must be missing, empty, or a git checkout (a clone of the
-# template repo). In a checkout everything except .git is replaced, so a file
-# removed from the source does not survive. It refuses a non-empty directory
-# that is not a checkout, the filesystem root, $HOME, and any directory that is
-# or contains this framework repo. No substitution happens: the fixture holds
+# <output-dir> must be missing, empty, or already a template or instance (it
+# has a CONFIG_SCHEMA file at its root, such as a clone of the template repo).
+# There everything except .git is replaced, so a file removed from the source
+# does not survive. It refuses any other non-empty directory (an unrelated git
+# checkout included), the filesystem root, $HOME, and any directory that is or
+# contains this framework repo. No substitution happens: the fixture holds
 # only synthetic names. It never commits or pushes.
 set -euo pipefail
 
@@ -33,7 +34,7 @@ case "$REPO/" in "$OUT_ABS"/*) die "output is or contains the framework repo ($O
 case "$OUT_ABS/" in "$REPO"/*) die "output is inside the framework repo ($OUT_ABS)" ;; esac
 
 if [ -n "$(ls -A "$OUT_ABS")" ]; then
-  [ -e "$OUT_ABS/.git" ] || die "$OUT_ABS is not empty and not a git checkout"
+  [ -f "$OUT_ABS/CONFIG_SCHEMA" ] || die "$OUT_ABS is not empty and has no CONFIG_SCHEMA (not a template or instance)"
   find "$OUT_ABS" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +
 fi
 cp -a "$SRC"/. "$OUT_ABS"/

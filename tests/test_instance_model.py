@@ -436,7 +436,7 @@ class GeneratorTests(unittest.TestCase):
     def test_template_has_required_layout(self):
         for relative in ("CONFIG_SCHEMA", "cluster.yaml.example", "README.md", ".gitmodules.example",
                          "baselines/README.md", "evidence/README.md", "evaluations/README.md",
-                         "evaluations/recurrence/README.md", ".github/workflows/validate-instance.yml"):
+                         ".github/workflows/validate-instance.yml"):
             with self.subTest(path=relative):
                 self.assertTrue((TEMPLATE / relative).is_file())
         self.assertEqual((TEMPLATE / "CONFIG_SCHEMA").read_text(encoding="utf-8").strip(), "1")
@@ -518,12 +518,6 @@ class ReviewRoundOneTests(unittest.TestCase):
                     self.assertTrue(any("content-like" in e for e in fixture.errors()), (key, fixture.errors()))
                 finally:
                     fixture.cleanup()
-        fixture = InstanceFixture()
-        try:
-            fixture.write_json("baselines/b.json", {"secret": 1234})
-            self.assertTrue(any("content-like" in e for e in fixture.errors()))
-        finally:
-            fixture.cleanup()
 
     def test_numeric_aggregate_names_are_allowed(self):
         self.fixture.write_json("baselines/b.json", {
@@ -540,9 +534,8 @@ class ReviewRoundOneTests(unittest.TestCase):
                 self.assertTrue(any("file type" in e for e in self.errors_for(relative)), self.fixture.errors())
 
     def test_allowed_file_types_pass(self):
-        self.fixture.write(".github/CODEOWNERS", "* @example-org/owners\n")
+        self.fixture.write(".github/workflows/extra.yaml", "name: extra\n")
         self.fixture.write_json("evaluations/recurrence/2026-11.json", {"unverified-done": 2})
-        self.fixture.write("evaluations/recurrence/README.md", "counts\n")
         self.fixture.write(".gitmodules", "[submodule \"framework\"]\n")
         self.assertEqual(self.fixture.errors(), [])
 
@@ -570,6 +563,126 @@ class ReviewRoundOneTests(unittest.TestCase):
                     load_cluster_yaml(text)
 
 
+class ReviewRoundTwoTests(unittest.TestCase):
+    """Findings of the second independent review of PR 12. Synthetic names only."""
+
+    HOST = "buildbox" + "77"
+
+    def setUp(self):
+        self.fixture = InstanceFixture()
+
+    def tearDown(self):
+        self.fixture.cleanup()
+
+    def assert_flagged(self, relative: str, record, needle: str) -> None:
+        fixture = InstanceFixture()
+        try:
+            if isinstance(record, str):
+                fixture.write(relative, record)
+            else:
+                fixture.write_json(relative, record)
+            errors = [e for e in fixture.errors() if e.startswith(relative + ":")]
+            self.assertTrue(any(needle in e for e in errors), fixture.errors())
+        finally:
+            fixture.cleanup()
+
+    # A
+    def test_host_shaped_names_inside_identifiers_and_any_case(self):
+        host = self.HOST
+        cases = {
+            "key with suffix": ({host + "_p95_ms": 12}, host),
+            "nested key with prefix": ({"by_node": {"node_" + host: 1}}, host),
+            "underscore value": ({"x": host + "_gpu"}, host),
+            "hyphen value": ({"x": host + "-worker"}, host),
+            "upper case": ({"x": host.upper()}, host),
+            "capitalized": ({"x": host.capitalize()}, host),
+            "trailing letter": ({"x": "labwk" + "01" + "x"}, "labwk01"),
+            "leading digit": ({"x": "2" + host}, host),
+        }
+        for label, (record, needle) in cases.items():
+            with self.subTest(case=label):
+                self.assert_flagged("baselines/b.json", record, needle)
+
+    def test_declared_hyphenated_node_passes(self):
+        cluster = example_cluster()
+        cluster["nodes"][0]["name"] = "gpu-box" + "12"
+        self.fixture.set_cluster(cluster)
+        shutil.rmtree(self.fixture.root / "evidence" / "node-a")
+        self.fixture.write_json("baselines/b.json", {"x": "ran on gpu-box" + "12", "by_node": {"gpu-box" + "12": 1}})
+        self.assertEqual(self.fixture.errors(), [])
+
+    def test_no_false_positive_names(self):
+        from scripts.instance_text import host_shaped
+        words = ["qwen3-8b", "ornith-tiny", "llama3-70b", "gemma2-27b", "gpt-oss-120b", "claude-opus-5-5", "bge-m3",
+                 "phi3", "p50", "p95", "p99", "p999_ms", "rfc3339", "skrsi-v1.0.0", "qwen2", "gpt4o", "amd64",
+                 "arm64", "aarch64", "win32", "win64", "py312", "cp311", "ubuntu2404", "node20", "top10", "ndcg10",
+                 "es2022", "sha256", "evidence_sha256", "7aa8e01f", "3611ea28-0c1d-4e2b-9f00-1234abcd5678",
+                 "9cadaa769ca26306e56abf566b13792a24e7dd47", "skrsi.evaluation.v4", "2026-11-12T00:00:00Z"]
+        for word in words:
+            with self.subTest(word=word):
+                self.assertEqual(host_shaped(word), [])
+
+    # B
+    def test_content_tokens_cover_queries_and_outputs(self):
+        for key in ("query", "search_query", "question", "answer", "input", "output", "notes", "summary",
+                    "snippet", "excerpt", "stderr", "stdout", "log", "payload", "sample", "pwd", "auth", "authHeader",
+                    "header"):
+            with self.subTest(key=key):
+                self.assert_flagged("baselines/b.json", {"x": {key: "value"}}, "content-like")
+        self.assert_flagged("baselines/b.json", {"query": ["a", "b"]}, "content-like")
+        self.assert_flagged("baselines/b.json", {"output": {"model": "x"}}, "content-like")
+
+    def test_numbers_never_carry_content(self):
+        self.fixture.write_json("baselines/b.json", {
+            "token_budget": 1000, "message_id": 5, "input_tokens": 10, "output_tokens": 10, "secret": 1234,
+            "query_count": 3, "output": {"p95_ms": 12}, "auth_failures": [1, 2], "sample_size": 40})
+        self.assertEqual(self.fixture.errors(), [])
+
+    # D
+    def test_github_dir_allows_only_workflow_yaml(self):
+        for relative in (".github/CODEOWNERS", ".github/workflows/run.sh", ".github/workflows/nested/x.yml",
+                         ".github/notes.md"):
+            with self.subTest(path=relative):
+                self.assert_flagged(relative, "name: x\n", "file type")
+
+    def test_readme_only_at_root_and_directly_in_record_dirs(self):
+        for relative in ("evaluations/recurrence/README.md", "baselines/2026/README.md"):
+            with self.subTest(path=relative):
+                self.assert_flagged(relative, "notes\n", "file type")
+        self.fixture.write("baselines/README.md", "notes\n")
+        self.assertEqual(self.fixture.errors(), [])
+
+    def test_symlinks_are_rejected(self):
+        outside = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, outside)
+        (outside / "data.json").write_text("{}\n", encoding="utf-8")
+        (self.fixture.root / "baselines" / "link.json").symlink_to(outside / "data.json")
+        (self.fixture.root / "evaluations" / "linkdir").symlink_to(outside, target_is_directory=True)
+        errors = self.fixture.errors()
+        for relative in ("baselines/link.json", "evaluations/linkdir"):
+            with self.subTest(path=relative):
+                self.assertTrue(any(e.startswith(relative + ":") and "symlink" in e for e in errors), errors)
+
+    # E
+    def test_credential_shaped_values_are_rejected(self):
+        values = {
+            "openai style": "s" + "k-" + "proj" + "A1b2C3d4E5f6G7h8I9j0K",
+            "github token": "gh" + "p_" + "A1b2C3d4E5f6G7h8I9j0Kl",
+            "github pat": "github" + "_pat_" + "11ABCDEFG",
+            "slack": "xo" + "xb-" + "1234-abcd",
+            "aws key id": "AK" + "IA" + "ABCDEFGHIJ234567",
+            "pem": "-----" + "BEGIN OPENSSH PRIVATE KEY-----",
+            "userinfo in url": "postgres" + chr(58) + "//" + "user" + chr(58) + "q" * 6 + chr(64) + "db/x",
+        }
+        for label, value in values.items():
+            with self.subTest(case=label):
+                self.assert_flagged("baselines/b.json", {"x": value}, "credential")
+
+    def test_service_names_are_not_credentials(self):
+        self.fixture.write_json("baselines/b.json", {"x": "sk-build-quality-evaluation-target", "y": "sk-default"})
+        self.assertEqual(self.fixture.errors(), [])
+
+
 class GeneratorSafetyTests(unittest.TestCase):
     """Finding 6. Destructive commands are stubbed where a bug could reach real paths."""
 
@@ -582,6 +695,7 @@ class GeneratorSafetyTests(unittest.TestCase):
             out = Path(directory)
             (out / ".git").mkdir()
             (out / ".git" / "HEAD").write_text("ref", encoding="utf-8")
+            (out / "CONFIG_SCHEMA").write_text("1\n", encoding="utf-8")
             (out / "stale.txt").write_text("left over", encoding="utf-8")
             result = self.run_generator(out)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -595,6 +709,16 @@ class GeneratorSafetyTests(unittest.TestCase):
             result = self.run_generator(directory)
             self.assertNotEqual(result.returncode, 0)
             self.assertTrue((Path(directory) / "keep.txt").is_file())
+
+    def test_refuses_unrelated_git_checkout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / ".git").mkdir()
+            (repo / "precious.py").write_text("print('mine')\n", encoding="utf-8")
+            result = self.run_generator(repo)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertTrue((repo / "precious.py").is_file())
+            self.assertIn("CONFIG_SCHEMA", result.stderr)
 
     def test_refuses_home_even_when_it_is_a_git_checkout(self):
         with tempfile.TemporaryDirectory() as directory:

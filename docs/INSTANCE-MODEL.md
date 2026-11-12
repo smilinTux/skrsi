@@ -61,7 +61,7 @@ skrsi-config-example/
 │   ├── node-a/2026-11-11.json     # one directory per declared node, one file per day
 │   └── node-b/2026-11-11.json
 ├── evaluations/                   # skrsi.evaluation.v4 records, the 30 day review
-│   └── recurrence/                # recurrence counts per lesson tag
+│   └── recurrence/                # recurrence counts per lesson tag (JSON, created on first write)
 ├── .github/workflows/validate-instance.yml
 └── README.md
 ```
@@ -81,10 +81,14 @@ skrsi-config-example/
 | `overrides[]` | optional `{target_id, metric, threshold, paused?}`: cluster thresholds for targets defined in service repos |
 
 The node short names in `cluster.yaml` are the allowlist for the whole instance. The validator finds node names two
-ways: as the value of a `node`, `nodes`, `host` or similar field, and as any host-shaped name (letters followed by
-two or more digits, such as `buildbox17`) in any key, any string value or the text of any other file. A name found
-either way that is not declared here fails validation. Percentiles (`p95`) and a few format names (`sha256`) are
-exempt. A host name with no trailing digits is not host-shaped; such names are caught by the denylist secret in
+ways: as the value of a `node`, `nodes`, `host` or similar field, and as any host-shaped token (two or more letters
+followed by two or more digits, such as `buildbox17`) in any key, any string value or the text of any other file.
+Text is split on every character other than letters and digits, on camelCase and on digit-to-letter boundaries, and
+lowercased, so `x_buildbox17_p95`, `BUILDBOX17`, `buildbox17x` and `2buildbox17` are all found. A hyphen-joined run
+that equals a declared node (`gpu-box12`) is allowed. A name found either way that is not declared here fails
+validation. Exempt: percentiles (`p95`), RFC numbers, Python and wheel tags (`py312`, `cp312`), `ubuntu2404`,
+`node20`, `top10`, `ndcg10`, `es2022`, architecture names (`amd64`, `arm64`), `sha256`, hex digests and card ids,
+and UUIDs. A host name with no trailing digits is not host-shaped; such names are caught by the denylist secret in
 framework CI, not by instance validation.
 
 ### CONFIG_SCHEMA
@@ -153,19 +157,24 @@ step runs it before every push. It:
 - validates `cluster.yaml` against the cluster schema and checks `CONFIG_SCHEMA`;
 - walks every file except the top-level `framework/` submodule and the root `.git`; a nested `framework/` or
   `.git` directory is walked like any other;
-- allows only `.json` and `.yaml` records, plus `README.md`, under `baselines/`, `evidence/` and `evaluations/`, and
-  only `CONFIG_SCHEMA`, `cluster.yaml`, `.gitignore`, `.gitmodules`, `README.md` and `.github/` at the root;
+- allows only `.json` and `.yaml` records under `baselines/`, `evidence/` and `evaluations/`, `README.md` only at
+  the root and directly in those three, `.github/workflows/*.yml` (or `.yaml`), and at the root only
+  `CONFIG_SCHEMA`, `cluster.yaml`, `.gitignore`, `.gitmodules` and `README.md`; rejects any symlink;
 - uses the `cluster.yaml` node names as the allowlist, as described above;
 - rejects any file under `evidence/` that is not `evidence/<declared node>/<YYYY-MM-DD>.json`, and an evidence
   `node` field that disagrees with its path;
 - rejects IPv4 addresses (any dotted quad, leading zeros included), IPv6 addresses, domains, and home or user paths
   (including `/srv/<x>/<y>`), both in the raw text and in every decoded key and string value, so a JSON escape
   cannot hide one;
-- rejects content-like fields at any depth, matched on the tokens of the key name (split on `_`, `-` and case):
-  `prompt`, `response`, `transcript`, `message`, `memory`, `body`, `title`, `description`, `content`, `text`,
-  `secret`, `password`, `token`, `dsn` and the rest of `CONTENT_TOKENS`, card or PR plus `name`, `text`, `title` or
-  `body`, and `api`, `private` or `access` plus `key`. A numeric aggregate is exempt when the key also carries an
-  aggregate token (`input_tokens`, `token_count`, `message_count`, `prompt_tokens_p95`);
+- rejects credential-shaped values anywhere: provider key prefixes (OpenAI style, GitHub, Slack, AWS key ids), PEM
+  headers, and URLs that carry a user name and password;
+- rejects content-like fields at any depth: a key whose tokens (split on `_`, `-` and camelCase) include `prompt`,
+  `response`, `transcript`, `message`, `memory`, `query`, `question`, `answer`, `input`, `output`, `notes`,
+  `summary`, `snippet`, `excerpt`, `stderr`, `stdout`, `log`, `payload`, `sample`, `body`, `title`, `description`,
+  `content`, `text`, `header`, `auth`, `secret`, `password`, `pwd`, `token`, `dsn` or the rest of `CONTENT_TOKENS`,
+  or card or PR plus `name`, `text`, `title` or `body`, or `api`, `private` or `access` plus `key`, AND whose value
+  holds a string. A number cannot carry content, so `input_tokens: 10`, `token_budget: 1000` and `message_id: 5`
+  pass;
 - validates any record that names a `skrsi.*` schema with the pinned framework's normative validator, and rejects
   a schema an instance does not accept (today `skrsi.evaluation.v4` and `skrsi.cluster.v1`; lessons belong in
   canon);
@@ -193,7 +202,8 @@ The framework and the template stay scrubbed of real names, as in skstacks.
 - **drift:** clones the public `skrsi-config-template` repo, runs `scripts/generate-config-template.sh` into a temp
   dir and diffs the two (ignoring `.git`). That repo does not exist yet, so the job is a no-op until it is created: it
   prints a notice and passes. The generator itself is covered by unit tests (verbatim copy, stale files removed, and
-  refusal of `/`, `$HOME`, the framework repo and any non-empty directory that is not a git checkout).
+  refusal of `/`, `$HOME`, the framework repo and any non-empty directory without a `CONFIG_SCHEMA` at its root,
+an unrelated git checkout included).
 - **scrub:** `validate_public.py`, then `validate_instance.py --scrub` over the framework (non-documentation IP
   addresses, home paths) and `--scrub --hostnames` over the template (also domains and host-shaped names), then the
   template is validated as an instance with `--cluster cluster.yaml.example`. Real estate names are checked through

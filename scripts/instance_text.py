@@ -26,10 +26,25 @@ HOME_PATH = re.compile("|".join((
     r"(?<![\w~])~[A-Za-z0-9_-]*/",
     r"\b[A-Za-z]:\\" + r"Users\\",
 )))
-HOST_SHAPED = re.compile(r"(?<![\w.-])[a-z]+(?:-[a-z]+)*[0-9]{2,}(?![\w-])")
+HOST_TOKEN = re.compile(r"[a-z]{2,}[0-9]{2,}")  # one letter (f00, T00) is hex or a timestamp
 HOST_SHAPED_ALLOW = {"sha256", "sha384", "sha512", "base64", "utf16", "utf32", "x86", "int32", "int64",
-                     "float32", "float64", "http11"}
-HOST_SHAPED_EXEMPT = re.compile(r"p[0-9]{2,3}|rfc[0-9]+")  # percentiles and RFC numbers
+                     "float32", "float64", "http11", "amd64", "arm64", "aarch64", "win32", "win64"}
+# Percentiles, RFC numbers, Python and wheel tags, OS and runtime versions, top-k and ndcg@k, ES targets.
+HOST_SHAPED_EXEMPT = re.compile(
+    r"p[0-9]{2,3}|rfc[0-9]+|py3[0-9]+|cp3[0-9]+|ubuntu[0-9]{4}|node[0-9]{2}|top[0-9]+|ndcg[0-9]+|es20[0-9]{2}")
+HEX_ID = re.compile(r"[0-9a-f]{8,}")  # digests and card ids are not host names
+UUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+# Credential-shaped values. Pieces are joined so no file here looks like a credential.
+CREDENTIAL = re.compile("|".join((
+    r"(?<![\w-])s" + r"k-(?=[A-Za-z0-9_-]*[0-9])[A-Za-z0-9_-]{20,}",
+    r"\bgh[pousr]" + r"_[A-Za-z0-9]{20,}",
+    r"\bgithub" + r"_pat_",
+    r"\bxox[abp]" + r"-",
+    r"\bAK" + r"IA[0-9A-Z]{16}\b",
+    r"-----" + r"BEGIN",
+)))
+URL_CREDENTIAL = re.compile(r"://[^\s/:@]+:[^\s/@]+@([^\s/:]*)")
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost"}
 DOCUMENTATION_NETS = tuple(ipaddress.ip_network(net) for net in (
     "192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24", "2001:db8::/32"))
 # A dotted token is a domain when its last label is one of these public or
@@ -74,16 +89,42 @@ def _addresses(text: str):
 
 
 def host_shaped(text: str, allowed=frozenset()) -> list[str]:
-    """Host-shaped names (letters, then two or more digits) not in allowed."""
-    return [m.group(0) for m in HOST_SHAPED.finditer(text) if m.group(0) not in allowed
-            and m.group(0) not in HOST_SHAPED_ALLOW and not HOST_SHAPED_EXEMPT.fullmatch(m.group(0))]
+    """Host-shaped tokens (two or more letters, then two or more digits) that are not declared nodes.
+
+    Text is split on anything but letters, digits and hyphens into runs. A run, or
+    any hyphen-joined slice of it, that equals a declared node is removed. The rest
+    is split on hyphens, camelCase and digit-to-letter boundaries, lowercased, and
+    each token is matched in full, so case, prefixes and suffixes do not hide one.
+    """
+    allowed = {name.lower() for name in allowed}
+    found = []
+    for run in re.split(r"[^A-Za-z0-9-]+", text):
+        if UUID.fullmatch(run.lower()):
+            continue
+        parts = [part for part in run.split("-") if part]
+        lowered = [part.lower() for part in parts]
+        covered = set()
+        for start in range(len(parts)):
+            for end in range(start + 1, len(parts) + 1):
+                if "-".join(lowered[start:end]) in allowed:
+                    covered.update(range(start, end))
+        for index, part in enumerate(parts):
+            if index in covered or HEX_ID.fullmatch(lowered[index]):
+                continue
+            spaced = re.sub(r"([a-z])([A-Z])|([0-9])([A-Za-z])", lambda m: " ".join(filter(None, m.groups())), part)
+            for token in spaced.lower().split():
+                if (HOST_TOKEN.fullmatch(token) and token not in allowed and token not in HOST_SHAPED_ALLOW
+                        and not HOST_SHAPED_EXEMPT.fullmatch(token)):
+                    found.append(token)
+    return list(dict.fromkeys(found))
 
 
 def text_findings(text: str, *, allow_documentation: bool = False, domains: bool = True) -> list[str]:
     """Addresses, domains and home paths in free text, as problem strings.
 
     allow_documentation skips loopback, unspecified and documentation addresses
-    (RFC 5737, RFC 3849); an instance allows none.
+    (RFC 5737, RFC 3849) and throwaway credentials in loopback URLs (framework test
+    fixtures); an instance allows none.
     """
     found = []
     for family, raw, address in _addresses(text):
@@ -94,6 +135,9 @@ def text_findings(text: str, *, allow_documentation: bool = False, domains: bool
     if domains:
         found.extend(f"domain {m.group(0)}" for m in DOTTED.finditer(text) if is_domain(m.group(0)))
     found.extend(f"home or user path {m.group(0)!r}" for m in HOME_PATH.finditer(text))
+    found.extend("credential-shaped value (pattern match, not shown)" for _ in CREDENTIAL.finditer(text))
+    found.extend("credential in a URL (not shown)" for m in URL_CREDENTIAL.finditer(text)
+                 if not (allow_documentation and m.group(1) in LOOPBACK_HOSTS))
     return found
 
 

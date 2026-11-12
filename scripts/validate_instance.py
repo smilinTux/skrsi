@@ -51,16 +51,15 @@ RECORD_SUFFIXES = (".json", ".yaml", ".yml")
 CONTENT_TOKENS = {
     "prompt", "prompts", "response", "responses", "completion", "completions", "transcript", "transcripts",
     "message", "messages", "memory", "memories", "body", "title", "description", "content", "text",
-    "comment", "comments", "secret", "secrets", "password", "passwords", "passwd", "passphrase", "token",
-    "tokens", "dsn", "credential", "credentials", "cookie", "authorization", "bearer", "apikey",
+    "comment", "comments", "secret", "secrets", "password", "passwords", "passwd", "passphrase", "pwd", "token",
+    "tokens", "dsn", "credential", "credentials", "cookie", "authorization", "auth", "bearer", "apikey", "header",
+    "headers", "query", "queries", "question", "questions", "answer", "answers", "input", "inputs", "output",
+    "outputs", "notes", "summary", "snippet", "snippets", "excerpt", "excerpts", "stderr", "stdout", "log", "logs",
+    "payload", "payloads", "sample", "samples",
 }
 TEXT_OF = {"card", "pr", "issue"}  # with one of TEXT_PARTS: card or PR text
 TEXT_PARTS = {"name", "text", "title", "body", "description", "content"}
 KEY_OF = {"api", "private", "access", "secret", "ssh"}  # with "key": a credential
-AGGREGATE_TOKENS = {
-    "tokens", "count", "counts", "total", "sum", "n", "num", "len", "length", "size", "bytes", "chars",
-    "rate", "ratio", "share", "ms", "seconds", "median", "mean", "avg", "min", "max", "p50", "p90", "p95", "p99",
-}
 NODE_KEYS = {"node", "nodes", "node_name", "nodename", "host", "hostname", "hosts", "source_node"}
 EVIDENCE_NAME = re.compile(r"([0-9]{4}-[0-9]{2}-[0-9]{2})\.json")
 EVIDENCE_RULE = "evidence files must be evidence/<node>/<YYYY-MM-DD>.json with <node> declared in cluster.yaml"
@@ -83,19 +82,20 @@ def _key_tokens(key: str) -> set[str]:
     return {token for token in re.split(r"[\s_.-]+", spaced.lower()) if token}
 
 
-def _numeric(value) -> bool:
+def _holds_string(value) -> bool:
     if isinstance(value, dict):
-        return bool(value) and all(_numeric(item) for item in value.values())
+        return any(_holds_string(item) for item in value.values())
     if isinstance(value, list):
-        return bool(value) and all(_numeric(item) for item in value)
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+        return any(_holds_string(item) for item in value)
+    return isinstance(value, str)
 
 
 def _content_key(key: str, value) -> bool:
+    """A content token in the key and a string in the value: a number cannot carry content."""
     tokens = _key_tokens(key)
     content = bool(tokens & CONTENT_TOKENS) or bool(tokens & TEXT_OF and tokens & TEXT_PARTS) \
         or ("key" in tokens and bool(tokens & KEY_OF))
-    return content and not (tokens & AGGREGATE_TOKENS and _numeric(value))
+    return content and _holds_string(value)
 
 
 def _string_problems(text: str, nodes: set[str]) -> list[str]:
@@ -126,21 +126,23 @@ def _walk_record(value, path: str, nodes: set[str], check_nodes: bool, out: list
 
 
 def _type_problem(parts: tuple[str, ...], cluster_name: str) -> list[str]:
+    name = parts[-1]
     if parts[0] == ".github":
-        return []
-    if len(parts) == 1:
+        ok = len(parts) == 3 and parts[1] == "workflows" and name.endswith((".yml", ".yaml"))
+    elif len(parts) == 1:
         allowed = ROOT_FILES | {cluster_name} | ({".gitmodules.example"} if cluster_name.endswith(".example") else set())
-        ok = parts[0] in allowed
+        ok = name in allowed
     else:
-        ok = parts[0] in RECORD_DIRS and (parts[-1] == "README.md" or parts[-1].endswith(RECORD_SUFFIXES))
-    return [] if ok else ["file type or location not allowed: records are .json or .yaml (plus README.md) under "
-                          "baselines/, evidence/ or evaluations/; the root holds only " + ", ".join(sorted(ROOT_FILES))
-                          + " and .github/"]
+        ok = parts[0] in RECORD_DIRS and (name.endswith(RECORD_SUFFIXES) or (name == "README.md" and len(parts) == 2))
+    return [] if ok else ["file type or location not allowed: records are .json or .yaml under baselines/, "
+                          "evidence/ or evaluations/, README.md only at the root or directly in those, workflows "
+                          "only as .github/workflows/*.yml; the root holds only " + ", ".join(sorted(ROOT_FILES))]
 
 
 def _instance_files(root: Path):
+    """Files and symlinks, except the top-level framework/ and .git. Symlinks are not followed."""
     for path in sorted(root.rglob("*")):
-        if path.relative_to(root).parts[0] not in TOP_LEVEL_SKIP and path.is_file():
+        if path.relative_to(root).parts[0] not in TOP_LEVEL_SKIP and (path.is_symlink() or path.is_file()):
             yield path
 
 
@@ -244,6 +246,9 @@ def instance_errors(root: Path, cluster_file: Path | None = None) -> list[str]:
         rel, parts = path.relative_to(root).as_posix(), path.relative_to(root).parts
         problems = _type_problem(parts, cluster_path.name if cluster_path.parent == root else "cluster.yaml")
         problems += _evidence_errors(parts, nodes) if parts[0] == "evidence" else []
+        if path.is_symlink():
+            errors.append(f"{rel}: symlink not allowed; an instance holds plain files only")
+            continue
         try:
             text = path.read_bytes().decode("utf-8")
         except UnicodeDecodeError:

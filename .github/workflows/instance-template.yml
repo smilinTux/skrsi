@@ -1,0 +1,57 @@
+name: Instance template
+
+# Advisory, like the other workflows here: not a required check.
+# - drift: scripts/generate-config-template.sh output must equal the in-repo
+#   fixture templates/instance-repo/. The public skrsi-config-template repo does
+#   not exist yet; once it does, the same diff runs against a clone of it.
+# - scrub: no real estate name or address in the framework or the template.
+#   The private SKRSI_ESTATE_DENYLIST secret carries real names so no public
+#   file spells them out; on a fork it is empty and the public half still runs.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: instance-template-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Generate the template and diff it with the fixture
+        run: |
+          set -euo pipefail
+          scripts/generate-config-template.sh "$RUNNER_TEMP/generated"
+          if ! diff -r templates/instance-repo "$RUNNER_TEMP/generated"; then
+            echo "::error::generator output differs from templates/instance-repo/"
+            exit 1
+          fi
+
+  scrub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Public artifact scan
+        run: python scripts/validate_public.py .
+      - name: Scrub the framework
+        env:
+          SKRSI_ESTATE_DENYLIST: ${{ secrets.SKRSI_ESTATE_DENYLIST }}
+        run: python scripts/validate_instance.py --scrub .
+      - name: Scrub the template, names and domains included
+        env:
+          SKRSI_ESTATE_DENYLIST: ${{ secrets.SKRSI_ESTATE_DENYLIST }}
+        run: python scripts/validate_instance.py --scrub --hostnames templates/instance-repo
+      - name: The template validates as an instance
+        run: python scripts/validate_instance.py --cluster templates/instance-repo/cluster.yaml.example templates/instance-repo

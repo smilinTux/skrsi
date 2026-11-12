@@ -14,6 +14,7 @@ record.
 | Feedback handoff | `schemas/feedback-handoff-v1.schema.json` | Routes a proposal to an existing authority without granting permission to act. |
 | Lesson v1 | `schemas/lesson-v1.schema.json` | Front matter of a canon `lesson` page: one actionable rule of 40 words or fewer, its evidence, the check that enforces it, a lifecycle status and a visibility. |
 | Lesson tags v1 | `schemas/lesson-tags-v1.json` | The one tag vocabulary, shared by lesson `tags` and review failure classes. |
+| Cluster v1 | `schemas/cluster-v1.schema.json` | `cluster.yaml` of a private instance repo: cluster name, `config_schema`, nodes (short name, role, enabled readers), adopted services, `canon: {repo, namespace}` and target overrides. Its node names are the instance allowlist. See [the instance model](./INSTANCE-MODEL.md). |
 
 ## Compatibility
 

@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smilintux.github.io/skrsi/schemas/cluster-v1.schema.json",
+  "title": "SKRSI cluster v1",
+  "description": "cluster.yaml of a private skrsi-config-<cluster> instance repo. Node short names declared here are the only node names the instance may contain. No addresses, domains or paths.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "config_schema", "cluster", "nodes", "canon"],
+  "properties": {
+    "schema": {
+      "const": "skrsi.cluster.v1"
+    },
+    "config_schema": {
+      "description": "Instance layout version. Must equal the CONFIG_SCHEMA file at the instance root.",
+      "const": 1
+    },
+    "cluster": {
+      "description": "Cluster name; the instance repo is skrsi-config-<cluster>.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "maxLength": 32
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "role", "readers"],
+        "properties": {
+          "name": {
+            "description": "Node short name: lowercase letters, digits and inner hyphens, no dots, so never an FQDN.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "minLength": 2,
+            "maxLength": 32
+          },
+          "role": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "maxLength": 32
+          },
+          "readers": {
+            "description": "Collector readers enabled on this node, for example cron, sessions, gateway, cardstore, github. Empty disables collection.",
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "maxLength": 32
+            }
+          }
+        }
+      }
+    },
+    "services": {
+      "description": "Adopted services and the repos that hold their skrsi/ target definitions.",
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "repo"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "maxLength": 64
+          },
+          "repo": {
+            "description": "owner/name or name of the service repo.",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*(?:/[A-Za-z0-9][A-Za-z0-9_-]*)?$",
+            "maxLength": 128
+          }
+        }
+      }
+    },
+    "canon": {
+      "description": "Where this cluster's lessons live. Lessons stay in canon; the instance only points at it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "namespace"],
+      "properties": {
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*(?:/[A-Za-z0-9][A-Za-z0-9_-]*)?$",
+          "maxLength": 128
+        },
+        "namespace": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          "maxLength": 64
+        }
+      }
+    },
+    "overrides": {
+      "description": "Cluster thresholds for targets defined in service repos. The target definition stays in its repo.",
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target_id", "metric", "threshold"],
+        "properties": {
+          "target_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+          },
+          "metric": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "paused": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

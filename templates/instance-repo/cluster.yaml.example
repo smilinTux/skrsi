@@ -1,0 +1,33 @@
+# cluster.yaml: the one file that describes this cluster to SKRSI.
+# Copy to cluster.yaml and replace the synthetic names. Validated against
+# framework/schemas/cluster-v1.schema.json by scripts/validate_instance.py.
+#
+# Node short names declared here are the ONLY node names this repo may contain.
+# Never put an address, a domain, a home path or a credential in this file.
+schema: skrsi.cluster.v1
+config_schema: 1            # must equal the CONFIG_SCHEMA file
+cluster: example            # this repo is skrsi-config-example
+
+nodes:
+  - name: node-a
+    role: primary
+    readers: [cron, sessions, gateway, cardstore, github]
+  - name: node-b
+    role: laptop
+    readers: [cron, sessions]
+  - name: node-c
+    role: gpu-worker
+    readers: []             # enrolled, collection off
+
+services:
+  - name: example-service
+    repo: example-org/example-service
+
+canon:
+  repo: example-org/example-canon
+  namespace: ops
+
+overrides:
+  - target_id: example-service-latency
+    metric: p95_ms
+    threshold: 1500

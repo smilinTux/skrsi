@@ -22,11 +22,14 @@ HOME_PATH = re.compile("|".join((
     r"(?<![\w.])/var/" + r"home/",
     r"(?<![\w.])/" + r"Users/",
     r"(?<![\w.])/" + r"root/",
+    r"(?<![\w.])/" + r"srv/[\w.-]+/[\w.-]+",
     r"(?<![\w~])~[A-Za-z0-9_-]*/",
     r"\b[A-Za-z]:\\" + r"Users\\",
 )))
 HOST_SHAPED = re.compile(r"(?<![\w.-])[a-z]+(?:-[a-z]+)*[0-9]{2,}(?![\w-])")
-HOST_SHAPED_ALLOW = {"sha256", "sha384", "sha512", "base64", "utf16", "utf32", "x86", "md5"}
+HOST_SHAPED_ALLOW = {"sha256", "sha384", "sha512", "base64", "utf16", "utf32", "x86", "int32", "int64",
+                     "float32", "float64", "http11"}
+HOST_SHAPED_EXEMPT = re.compile(r"p[0-9]{2,3}|rfc[0-9]+")  # percentiles and RFC numbers
 DOCUMENTATION_NETS = tuple(ipaddress.ip_network(net) for net in (
     "192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24", "2001:db8::/32"))
 # A dotted token is a domain when its last label is one of these public or
@@ -56,11 +59,11 @@ def is_domain(token: str) -> bool:
 
 
 def _addresses(text: str):
+    """Every dotted quad, even one ipaddress rejects (leading zeros); and IPv6."""
     for match in IPV4.finditer(text):
-        try:
-            yield "IPv4", match.group(0), ipaddress.IPv4Address(match.group(0))
-        except ValueError:
-            continue
+        octets = [int(part) for part in match.group(0).split(".")]
+        address = ipaddress.IPv4Address(".".join(map(str, octets))) if max(octets) <= 255 else None
+        yield "IPv4", match.group(0), address
     for match in IPV6.finditer(text):
         if not re.search(r"[0-9A-Fa-f]", match.group(0)):
             continue
@@ -68,6 +71,12 @@ def _addresses(text: str):
             yield "IPv6", match.group(0), ipaddress.IPv6Address(match.group(0))
         except ValueError:
             continue
+
+
+def host_shaped(text: str, allowed=frozenset()) -> list[str]:
+    """Host-shaped names (letters, then two or more digits) not in allowed."""
+    return [m.group(0) for m in HOST_SHAPED.finditer(text) if m.group(0) not in allowed
+            and m.group(0) not in HOST_SHAPED_ALLOW and not HOST_SHAPED_EXEMPT.fullmatch(m.group(0))]
 
 
 def text_findings(text: str, *, allow_documentation: bool = False, domains: bool = True) -> list[str]:
@@ -78,7 +87,7 @@ def text_findings(text: str, *, allow_documentation: bool = False, domains: bool
     """
     found = []
     for family, raw, address in _addresses(text):
-        if allow_documentation and (address.is_loopback or address.is_unspecified
+        if allow_documentation and address is not None and (address.is_loopback or address.is_unspecified
                                     or any(address in net for net in DOCUMENTATION_NETS if net.version == address.version)):
             continue
         found.append(f"{family} address {raw}")
@@ -118,8 +127,7 @@ def scrub_errors(paths, hostnames: bool = False, denylist=()) -> list[str]:
                 continue
             problems = text_findings(text, allow_documentation=not hostnames, domains=hostnames)
             if hostnames:
-                problems += [f"host-shaped name {m.group(0)!r}" for m in HOST_SHAPED.finditer(text)
-                             if m.group(0) not in HOST_SHAPED_ALLOW]
+                problems += [f"host-shaped name {name!r}" for name in host_shaped(text)]
             else:
                 problems = [p for p in problems if not p.startswith("home or user path '~")]
             problems += [f"denylisted name (pattern {index})" for index, pattern in enumerate(patterns)

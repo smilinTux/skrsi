@@ -7,6 +7,7 @@ by concatenation so this file itself passes the public scrub.
 import copy
 import filecmp
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -53,6 +54,7 @@ class InstanceFixture:
         self.root = Path(self._tmp.name) / "skrsi-config-example"
         shutil.copytree(TEMPLATE, self.root)
         (self.root / "cluster.yaml.example").rename(self.root / "cluster.yaml")
+        (self.root / ".gitmodules.example").unlink()  # step 3 of creating an instance
         self.write_json("evidence/node-a/2026-11-11.json", AGGREGATE)
         node_b = dict(AGGREGATE, node="node-b")
         self.write_json("evidence/node-b/2026-11-11.json", node_b)
@@ -161,7 +163,7 @@ class ClusterConfigStdlibTests(unittest.TestCase):
         "nodes:\n    -   name: node-a\n        role: primary\n        readers: []\n"
         "canon:\n  repo: canon\n  namespace: ops\noverrides:\n  - target_id: abc\n    metric: p95_ms\n"
         "    threshold: 1.5e+3\n    paused: false\n",
-        "a: 1.5e3\nb: -0.25\nc: .5\nd: '#not a comment'\ne: x#y\nf: [a, 'b c', 3]\ng: {}\nh: []\n",
+        "a: 1.5e3\nb: -0.25\nc: .5\nd: '#not a comment'\ne: x#y\nf: [a, b c, 3]\ng: {}\nh: []\n",
         "a:\n  b:\n    - 1\n    - -2\n    - x # not a comment#here\n  c: ~\n  d: null\n  e: True\n",
     )
 
@@ -418,15 +420,11 @@ class ScrubTests(unittest.TestCase):
 
 
 class GeneratorTests(unittest.TestCase):
-    def test_generator_output_equals_fixture(self):
+    def test_generator_copies_fixture_verbatim(self):
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory) / "out"
-            out.mkdir()
-            (out / "stale.txt").write_text("left over", encoding="utf-8")
             subprocess.run(["bash", str(GENERATOR), str(out)], check=True, capture_output=True)
-            self.assertFalse((out / "stale.txt").exists())
-            comparison = filecmp.dircmp(TEMPLATE, out)
-            self.assertEqual(_differences(comparison), [])
+            self.assertEqual(_differences(filecmp.dircmp(TEMPLATE, out)), [])
             self.assertTrue((out / ".github" / "workflows" / "validate-instance.yml").is_file())
             self.assertTrue((out / "CONFIG_SCHEMA").is_file())
 
@@ -450,6 +448,181 @@ class GeneratorTests(unittest.TestCase):
         for line in workflow.splitlines():
             if "uses:" in line:
                 self.assertRegex(line, r"uses: [\w./-]+@[0-9a-f]{40}")
+
+
+class ReviewRoundOneTests(unittest.TestCase):
+    """Findings of the first independent review of PR 12. Synthetic names only."""
+
+    HOST = "buildbox" + "77"
+
+    def setUp(self):
+        self.fixture = InstanceFixture()
+
+    def tearDown(self):
+        self.fixture.cleanup()
+
+    def errors_for(self, relative: str) -> list[str]:
+        return [e for e in self.fixture.errors() if e.startswith(relative + ":")]
+
+    # 1
+    def test_nested_framework_and_git_dirs_are_walked(self):
+        leak = {"addr": "10.9." + "8.7"}
+        for relative in ("baselines/framework/notes.json", "evidence/node-a/framework/2026-11-12.json",
+                         "evaluations/.git/leak.json"):
+            with self.subTest(path=relative):
+                self.fixture.write_json(relative, leak)
+                self.assertTrue(any("IPv4" in e for e in self.errors_for(relative)), self.fixture.errors())
+
+    # 2
+    def test_undeclared_host_shaped_names_anywhere_are_rejected(self):
+        cases = {
+            "baselines/a.json": json.dumps({"machine": self.HOST}),
+            "baselines/b.json": json.dumps({"per_node": {self.HOST: {"n": 1}}}),
+            "baselines/c.json": json.dumps({"note": "ran on " + self.HOST}),
+            "baselines/d.yaml": self.HOST + ": 3\n",
+            "baselines/README.md": "measured on " + self.HOST + "\n",
+        }
+        for relative, text in cases.items():
+            with self.subTest(path=relative):
+                self.fixture.write(relative, text)
+                self.assertTrue(any(self.HOST in e for e in self.errors_for(relative)), self.fixture.errors())
+
+    def test_declared_host_shaped_node_and_percentiles_are_allowed(self):
+        cluster = example_cluster()
+        cluster["nodes"][0]["name"] = self.HOST
+        self.fixture.set_cluster(cluster)
+        shutil.rmtree(self.fixture.root / "evidence" / "node-a")
+        self.fixture.write_json(f"evidence/{self.HOST}/2026-11-11.json", dict(AGGREGATE, node=self.HOST))
+        self.fixture.write_json("baselines/b.json", {"per_node": {self.HOST: {"p95": 3, "p50": 1}}})
+        self.fixture.write("baselines/README.md", "measured on " + self.HOST + ", sha256 digests\n")
+        self.assertEqual(self.fixture.errors(), [])
+
+    # 3
+    def test_drift_job_clones_template_repo_or_says_it_is_absent(self):
+        workflow = (ROOT / ".github" / "workflows" / "instance-template.yml").read_text(encoding="utf-8")
+        self.assertIn("smilinTux/skrsi-config-template", workflow)
+        self.assertIn("git ls-remote", workflow)
+        self.assertIn("::notice::", workflow)
+        self.assertNotIn("diff -r templates/instance-repo", workflow)
+        doc = (ROOT / "docs" / "INSTANCE-MODEL.md").read_text(encoding="utf-8")
+        self.assertIn("no-op until", doc)
+
+    # 4
+    def test_content_keys_match_on_tokens(self):
+        for key in ("user_prompt", "response_text", "memory_snippet", "card_name", "prTitle", "systemPrompt",
+                    "db-password", "apiKey", "session-transcript", "commitMessage", "secret", "tokens"):
+            with self.subTest(key=key):
+                fixture = InstanceFixture()
+                try:
+                    fixture.write_json("baselines/b.json", {"x": {key: "value"}})
+                    self.assertTrue(any("content-like" in e for e in fixture.errors()), (key, fixture.errors()))
+                finally:
+                    fixture.cleanup()
+        fixture = InstanceFixture()
+        try:
+            fixture.write_json("baselines/b.json", {"secret": 1234})
+            self.assertTrue(any("content-like" in e for e in fixture.errors()))
+        finally:
+            fixture.cleanup()
+
+    def test_numeric_aggregate_names_are_allowed(self):
+        self.fixture.write_json("baselines/b.json", {
+            "input_tokens": 5, "output_tokens": 6, "total_tokens": 11, "token_count": 3, "message_count": 2,
+            "prompt_tokens_p95": 4.5, "tokens": {"input": 1, "output": 2}})
+        self.assertEqual(self.fixture.errors(), [])
+
+    # 5
+    def test_file_types_are_restricted(self):
+        for relative in ("baselines/x.csv", "evaluations/notes.md", "extra.txt", "scripts/x.json",
+                         "evidence/node-a/README.txt"):
+            with self.subTest(path=relative):
+                self.fixture.write(relative, "{}\n")
+                self.assertTrue(any("file type" in e for e in self.errors_for(relative)), self.fixture.errors())
+
+    def test_allowed_file_types_pass(self):
+        self.fixture.write(".github/CODEOWNERS", "* @example-org/owners\n")
+        self.fixture.write_json("evaluations/recurrence/2026-11.json", {"unverified-done": 2})
+        self.fixture.write("evaluations/recurrence/README.md", "counts\n")
+        self.fixture.write(".gitmodules", "[submodule \"framework\"]\n")
+        self.assertEqual(self.fixture.errors(), [])
+
+    # 7
+    def test_escaped_json_strings_are_checked_decoded(self):
+        dot = "\\u002e"
+        self.fixture.write("baselines/b.json", '{"x": "10' + dot + '1' + dot + '2' + dot + '3"}\n')
+        self.assertTrue(any("IPv4" in e for e in self.errors_for("baselines/b.json")), self.fixture.errors())
+        self.fixture.write("baselines/b.json", '{"\\u0062uildbox77": 1}\n')
+        self.assertTrue(any(self.HOST in e for e in self.errors_for("baselines/b.json")), self.fixture.errors())
+
+    # 8
+    def test_leading_zero_ipv4_and_srv_paths_are_rejected(self):
+        self.fixture.write_json("baselines/b.json", {"x": "192.168" + ".000.041"})
+        self.assertTrue(any("IPv4" in e for e in self.errors_for("baselines/b.json")), self.fixture.errors())
+        self.fixture.write_json("baselines/b.json", {"x": "/" + "srv/work/someone"})
+        self.assertTrue(any("path" in e for e in self.errors_for("baselines/b.json")), self.fixture.errors())
+
+    # 9
+    def test_yaml_reader_fails_closed(self):
+        for text in ("a: [x, 'b c']\n", "a: {k: 'v'}\n", "a: 'abc\n", "a: abc'\n", "a: it's\n",
+                     "a: b: c\n", "a: 012\n", "a: [01]\n", "- a: b: c\n"):
+            with self.subTest(text=text):
+                with self.assertRaises(YamlSubsetError):
+                    load_cluster_yaml(text)
+
+
+class GeneratorSafetyTests(unittest.TestCase):
+    """Finding 6. Destructive commands are stubbed where a bug could reach real paths."""
+
+    def run_generator(self, out, env=None):
+        return subprocess.run(["bash", str(GENERATOR), str(out)], capture_output=True, text=True, check=False,
+                              env=env)
+
+    def test_keeps_git_dir_and_clears_the_rest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            (out / ".git").mkdir()
+            (out / ".git" / "HEAD").write_text("ref", encoding="utf-8")
+            (out / "stale.txt").write_text("left over", encoding="utf-8")
+            result = self.run_generator(out)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((out / ".git" / "HEAD").is_file())
+            self.assertFalse((out / "stale.txt").exists())
+            self.assertTrue((out / "cluster.yaml.example").is_file())
+
+    def test_refuses_non_empty_dir_that_is_not_a_git_checkout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "keep.txt").write_text("mine", encoding="utf-8")
+            result = self.run_generator(directory)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertTrue((Path(directory) / "keep.txt").is_file())
+
+    def test_refuses_home_even_when_it_is_a_git_checkout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            (home / ".git").mkdir()
+            (home / "keep.txt").write_text("mine", encoding="utf-8")
+            result = self.run_generator(home, env={**os.environ, "HOME": str(home)})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertTrue((home / "keep.txt").is_file())
+
+    def test_refuses_the_framework_repo_itself(self):
+        before = sorted(p.name for p in ROOT.iterdir())
+        result = self.run_generator(ROOT, env=self.stubbed_env())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(sorted(p.name for p in ROOT.iterdir()), before)
+
+    def test_refuses_filesystem_root(self):
+        result = self.run_generator("/", env=self.stubbed_env())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("refus", result.stderr)
+
+    def stubbed_env(self) -> dict:
+        stub = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, stub)
+        for name in ("find", "rm", "cp"):
+            (stub / name).write_text("#!/bin/sh\necho stubbed >&2\nexit 0\n", encoding="utf-8")
+            (stub / name).chmod(0o755)
+        return {**os.environ, "PATH": f"{stub}:{os.environ['PATH']}"}
 
 
 def _differences(comparison: filecmp.dircmp) -> list[str]:

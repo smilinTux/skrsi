@@ -1,9 +1,9 @@
 name: Instance template
 
 # Advisory, like the other workflows here: not a required check.
-# - drift: scripts/generate-config-template.sh output must equal the in-repo
-#   fixture templates/instance-repo/. The public skrsi-config-template repo does
-#   not exist yet; once it does, the same diff runs against a clone of it.
+# - drift: scripts/generate-config-template.sh output must equal a clone of the
+#   public skrsi-config-template repo. That repo does not exist yet, so until it
+#   is created the job prints a notice and does nothing.
 # - scrub: no real estate name or address in the framework or the template.
 #   The private SKRSI_ESTATE_DENYLIST secret carries real names so no public
 #   file spells them out; on a fork it is empty and the public half still runs.
@@ -26,12 +26,18 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Generate the template and diff it with the fixture
+      - name: Diff the generated template with the published template repo
         run: |
           set -euo pipefail
+          url=https://github.com/smilinTux/skrsi-config-template.git
+          if ! GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code "$url" HEAD >/dev/null 2>&1; then
+            echo "::notice::smilinTux/skrsi-config-template does not exist or is not readable yet; drift check skipped (no-op until it is created)."
+            exit 0
+          fi
+          git clone --quiet --depth 1 "$url" "$RUNNER_TEMP/published"
           scripts/generate-config-template.sh "$RUNNER_TEMP/generated"
-          if ! diff -r templates/instance-repo "$RUNNER_TEMP/generated"; then
-            echo "::error::generator output differs from templates/instance-repo/"
+          if ! diff -r --exclude=.git "$RUNNER_TEMP/generated" "$RUNNER_TEMP/published"; then
+            echo "::error::skrsi-config-template has drifted from templates/instance-repo/. Regenerate it with scripts/generate-config-template.sh and push the result to the template repo."
             exit 1
           fi
 

@@ -80,8 +80,12 @@ skrsi-config-example/
 | `canon` | `{repo, namespace}`: where this cluster's lessons live |
 | `overrides[]` | optional `{target_id, metric, threshold, paused?}`: cluster thresholds for targets defined in service repos |
 
-The node short names in `cluster.yaml` are the allowlist for the whole instance. A node name anywhere else that is
-not declared here fails validation.
+The node short names in `cluster.yaml` are the allowlist for the whole instance. The validator finds node names two
+ways: as the value of a `node`, `nodes`, `host` or similar field, and as any host-shaped name (letters followed by
+two or more digits, such as `buildbox17`) in any key, any string value or the text of any other file. A name found
+either way that is not declared here fails validation. Percentiles (`p95`) and a few format names (`sha256`) are
+exempt. A host name with no trailing digits is not host-shaped; such names are caught by the denylist secret in
+framework CI, not by instance validation.
 
 ### CONFIG_SCHEMA
 
@@ -147,24 +151,38 @@ Enforcement is `scripts/validate_instance.py`. Instance CI runs it on every push
 step runs it before every push. It:
 
 - validates `cluster.yaml` against the cluster schema and checks `CONFIG_SCHEMA`;
-- uses the `cluster.yaml` node names as the allowlist for `node`, `nodes`, `host` and similar fields;
+- walks every file except the top-level `framework/` submodule and the root `.git`; a nested `framework/` or
+  `.git` directory is walked like any other;
+- allows only `.json` and `.yaml` records, plus `README.md`, under `baselines/`, `evidence/` and `evaluations/`, and
+  only `CONFIG_SCHEMA`, `cluster.yaml`, `.gitignore`, `.gitmodules`, `README.md` and `.github/` at the root;
+- uses the `cluster.yaml` node names as the allowlist, as described above;
 - rejects any file under `evidence/` that is not `evidence/<declared node>/<YYYY-MM-DD>.json`, and an evidence
   `node` field that disagrees with its path;
-- rejects IPv4 and IPv6 addresses, domains, and home or user paths anywhere in the text;
-- rejects content-like fields (`prompt`, `response`, `messages`, `memory_content`, `description`, `pr_body`,
-  `token`, `password`, `dsn` and the rest of `CONTENT_KEYS`) at any depth;
+- rejects IPv4 addresses (any dotted quad, leading zeros included), IPv6 addresses, domains, and home or user paths
+  (including `/srv/<x>/<y>`), both in the raw text and in every decoded key and string value, so a JSON escape
+  cannot hide one;
+- rejects content-like fields at any depth, matched on the tokens of the key name (split on `_`, `-` and case):
+  `prompt`, `response`, `transcript`, `message`, `memory`, `body`, `title`, `description`, `content`, `text`,
+  `secret`, `password`, `token`, `dsn` and the rest of `CONTENT_TOKENS`, card or PR plus `name`, `text`, `title` or
+  `body`, and `api`, `private` or `access` plus `key`. A numeric aggregate is exempt when the key also carries an
+  aggregate token (`input_tokens`, `token_count`, `message_count`, `prompt_tokens_p95`);
 - validates any record that names a `skrsi.*` schema with the pinned framework's normative validator, and rejects
   a schema an instance does not accept (today `skrsi.evaluation.v4` and `skrsi.cluster.v1`; lessons belong in
   canon);
 - rejects files that are not UTF-8 text.
 
-Aggregate field names such as `input_tokens` are not credentials and pass. The validator is stdlib only, like every
+The validator is stdlib only, like every
 script here, so instance CI and the publish step install nothing. `cluster.yaml` is read by `scripts/cluster_config.py`,
 a strict YAML subset loader (block mappings and sequences, flow lists and maps, plain or quoted scalars, comments) that
-rejects anchors, tags, multi-line strings and tabs instead of guessing, and whose `cluster_errors` mirrors the schema
+rejects anchors, tags, multi-line strings, tabs, quotes inside flow collections, unmatched quotes, `a: b: c` and
+numbers with a leading zero instead of guessing, and whose `cluster_errors` mirrors the schema
 (tests hold both to PyYAML and to the JSON Schema). Each violation is printed on its own line
 as `<path>: <problem>`, and the exit code is 1. The function `instance_errors(root)` is the same check for callers
 that import it.
+
+Domains are recognised by a closed list of public and private-network TLDs, so dotted metric names and event types
+are not mistaken for them. A real domain on a TLD outside that list is not caught here; the private
+`SKRSI_ESTATE_DENYLIST` secret in framework CI is the backstop for real estate names and domains.
 
 The framework and the template stay scrubbed of real names, as in skstacks.
 
@@ -172,8 +190,10 @@ The framework and the template stay scrubbed of real names, as in skstacks.
 
 `.github/workflows/instance-template.yml` is advisory, like the other workflows here:
 
-- **drift:** runs `scripts/generate-config-template.sh` into a temp dir and diffs it with `templates/instance-repo/`.
-  Once the public template repo exists, the same diff runs against a clone of it.
+- **drift:** clones the public `skrsi-config-template` repo, runs `scripts/generate-config-template.sh` into a temp
+  dir and diffs the two (ignoring `.git`). That repo does not exist yet, so the job is a no-op until it is created: it
+  prints a notice and passes. The generator itself is covered by unit tests (verbatim copy, stale files removed, and
+  refusal of `/`, `$HOME`, the framework repo and any non-empty directory that is not a git checkout).
 - **scrub:** `validate_public.py`, then `validate_instance.py --scrub` over the framework (non-documentation IP
   addresses, home paths) and `--scrub --hostnames` over the template (also domains and host-shaped names), then the
   template is validated as an instance with `--cluster cluster.yaml.example`. Real estate names are checked through

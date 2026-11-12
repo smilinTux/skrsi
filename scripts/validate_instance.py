@@ -40,22 +40,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from build_evaluation import Malformed, validate_v4  # noqa: E402
 from cluster_config import CONFIG_SCHEMA, YamlSubsetError, cluster_errors, load_cluster_yaml, node_names  # noqa: E402
-from instance_text import denylist_from_env, files, scrub_errors, text_findings  # noqa: E402
+from instance_text import denylist_from_env, host_shaped, scrub_errors, text_findings  # noqa: E402
 
 __all__ = ["instance_errors", "scrub_errors", "main"]
 
-SKIP_DIRS = {".git", "framework", "__pycache__", ".pytest_cache"}
-CONTENT_KEYS = {
-    "prompt", "prompts", "system_prompt", "response", "responses", "completion", "completions",
-    "messages", "message", "transcript", "content", "text", "body", "title", "description",
-    "comment", "comments", "memory", "memories", "memory_content", "memory_text",
-    "card_text", "card_title", "card_body", "card_description", "pr_text", "pr_title", "pr_body",
-    "commit_message", "query", "query_text",
-    "token", "access_token", "refresh_token", "api_key", "apikey", "password", "passwd",
-    "passphrase", "secret", "client_secret", "private_key", "dsn", "authorization", "cookie",
-    "credential", "credentials", "bearer",
+TOP_LEVEL_SKIP = {"framework", ".git"}  # only at the instance root: the pinned submodule and git itself
+ROOT_FILES = {"CONFIG_SCHEMA", "cluster.yaml", ".gitignore", ".gitmodules", "README.md"}
+RECORD_DIRS = {"baselines", "evidence", "evaluations"}
+RECORD_SUFFIXES = (".json", ".yaml", ".yml")
+CONTENT_TOKENS = {
+    "prompt", "prompts", "response", "responses", "completion", "completions", "transcript", "transcripts",
+    "message", "messages", "memory", "memories", "body", "title", "description", "content", "text",
+    "comment", "comments", "secret", "secrets", "password", "passwords", "passwd", "passphrase", "token",
+    "tokens", "dsn", "credential", "credentials", "cookie", "authorization", "bearer", "apikey",
 }
-CREDENTIAL_SUFFIXES = ("_password", "_passphrase", "_secret", "_api_key", "_dsn", "_private_key")
+TEXT_OF = {"card", "pr", "issue"}  # with one of TEXT_PARTS: card or PR text
+TEXT_PARTS = {"name", "text", "title", "body", "description", "content"}
+KEY_OF = {"api", "private", "access", "secret", "ssh"}  # with "key": a credential
+AGGREGATE_TOKENS = {
+    "tokens", "count", "counts", "total", "sum", "n", "num", "len", "length", "size", "bytes", "chars",
+    "rate", "ratio", "share", "ms", "seconds", "median", "mean", "avg", "min", "max", "p50", "p90", "p95", "p99",
+}
 NODE_KEYS = {"node", "nodes", "node_name", "nodename", "host", "hostname", "hosts", "source_node"}
 EVIDENCE_NAME = re.compile(r"([0-9]{4}-[0-9]{2}-[0-9]{2})\.json")
 EVIDENCE_RULE = "evidence files must be evidence/<node>/<YYYY-MM-DD>.json with <node> declared in cluster.yaml"
@@ -73,16 +78,42 @@ def _v4_errors(record) -> list[str]:
 RECORD_VALIDATORS = {"skrsi.evaluation.v4": _v4_errors, "skrsi.cluster.v1": cluster_errors}
 
 
+def _key_tokens(key: str) -> set[str]:
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", key)
+    return {token for token in re.split(r"[\s_.-]+", spaced.lower()) if token}
+
+
+def _numeric(value) -> bool:
+    if isinstance(value, dict):
+        return bool(value) and all(_numeric(item) for item in value.values())
+    if isinstance(value, list):
+        return bool(value) and all(_numeric(item) for item in value)
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _content_key(key: str, value) -> bool:
+    tokens = _key_tokens(key)
+    content = bool(tokens & CONTENT_TOKENS) or bool(tokens & TEXT_OF and tokens & TEXT_PARTS) \
+        or ("key" in tokens and bool(tokens & KEY_OF))
+    return content and not (tokens & AGGREGATE_TOKENS and _numeric(value))
+
+
+def _string_problems(text: str, nodes: set[str]) -> list[str]:
+    """Rule 7 checks on one decoded string, so JSON escapes cannot hide anything."""
+    return text_findings(text) + [f"host-shaped name {name!r} is not a node declared in cluster.yaml"
+                                  for name in host_shaped(text, nodes)]
+
+
 def _walk_record(value, path: str, nodes: set[str], check_nodes: bool, out: list[str]) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
             here = f"{path}.{key}" if path else str(key)
-            lowered = str(key).lower()
-            if lowered in CONTENT_KEYS or lowered.endswith(CREDENTIAL_SUFFIXES):
+            out.extend(_string_problems(str(key), nodes))
+            if _content_key(str(key), item):
                 out.append(f"content-like field {here!r}: no prompts, responses, memory content, "
                            "card or PR text, or credentials")
                 continue
-            if check_nodes and lowered in NODE_KEYS:
+            if check_nodes and str(key).lower() in NODE_KEYS:
                 names = [item] if isinstance(item, str) else item if isinstance(item, list) else []
                 out.extend(f"{here}: node name {name!r} is not declared in cluster.yaml"
                            for name in names if isinstance(name, str) and name not in nodes)
@@ -90,6 +121,27 @@ def _walk_record(value, path: str, nodes: set[str], check_nodes: bool, out: list
     elif isinstance(value, list):
         for index, item in enumerate(value):
             _walk_record(item, f"{path}[{index}]", nodes, check_nodes, out)
+    elif isinstance(value, str):
+        out.extend(_string_problems(value, nodes))
+
+
+def _type_problem(parts: tuple[str, ...], cluster_name: str) -> list[str]:
+    if parts[0] == ".github":
+        return []
+    if len(parts) == 1:
+        allowed = ROOT_FILES | {cluster_name} | ({".gitmodules.example"} if cluster_name.endswith(".example") else set())
+        ok = parts[0] in allowed
+    else:
+        ok = parts[0] in RECORD_DIRS and (parts[-1] == "README.md" or parts[-1].endswith(RECORD_SUFFIXES))
+    return [] if ok else ["file type or location not allowed: records are .json or .yaml (plus README.md) under "
+                          "baselines/, evidence/ or evaluations/; the root holds only " + ", ".join(sorted(ROOT_FILES))
+                          + " and .github/"]
+
+
+def _instance_files(root: Path):
+    for path in sorted(root.rglob("*")):
+        if path.relative_to(root).parts[0] not in TOP_LEVEL_SKIP and path.is_file():
+            yield path
 
 
 def _load_cluster(path: Path, label: str, errors: list[str]) -> tuple[dict | None, set[str]]:
@@ -155,7 +207,7 @@ def _record(path: Path, parts: tuple[str, ...], text: str):
 
 
 def _file_problems(path: Path, parts: tuple[str, ...], text: str, nodes: set[str], is_cluster: bool) -> list[str]:
-    problems = text_findings(text)
+    problems = _string_problems(text, nodes)
     try:
         record = _record(path, parts, text)
     except ValueError as exc:
@@ -188,9 +240,10 @@ def instance_errors(root: Path, cluster_file: Path | None = None) -> list[str]:
     errors: list[str] = []
     cluster, nodes = _load_cluster(cluster_path, label, errors)
     _check_config_schema(root, cluster, errors)
-    for path in files(root, SKIP_DIRS):
+    for path in _instance_files(root):
         rel, parts = path.relative_to(root).as_posix(), path.relative_to(root).parts
-        problems = _evidence_errors(parts, nodes) if parts[0] == "evidence" else []
+        problems = _type_problem(parts, cluster_path.name if cluster_path.parent == root else "cluster.yaml")
+        problems += _evidence_errors(parts, nodes) if parts[0] == "evidence" else []
         try:
             text = path.read_bytes().decode("utf-8")
         except UnicodeDecodeError:

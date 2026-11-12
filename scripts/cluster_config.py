@@ -16,6 +16,7 @@ import re
 
 INT = re.compile(r"[-+]?[0-9]+")
 FLOAT = re.compile(r"[-+]?(?:[0-9]+\.[0-9]*|\.[0-9]+)(?:[eE][-+][0-9]+)?")  # YAML 1.1, as PyYAML reads it
+LEADING_ZERO = re.compile(r"[-+]?0[0-9]")
 KEY = re.compile(r"([A-Za-z0-9_][A-Za-z0-9_-]*):(?:\s+(.*))?$")
 SLUG = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
 REPO = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*(?:/[A-Za-z0-9][A-Za-z0-9_-]*)?")
@@ -41,13 +42,15 @@ def _strip_comment(line: str) -> str:
     return line.rstrip()
 
 
-def _scalar(text: str, lineno: int):
+def _scalar(text: str, lineno: int, in_flow: bool = False):
     text = text.strip()
+    if in_flow and (text[:1] in "[{" or any(q in text for q in "'\"")):
+        raise YamlSubsetError(f"line {lineno}: no quotes or nesting inside a flow collection")
     if text.startswith("["):
         if not text.endswith("]"):
             raise YamlSubsetError(f"line {lineno}: unclosed flow list")
         inner = text[1:-1].strip()
-        return [_scalar(item, lineno) for item in inner.split(",")] if inner else []
+        return [_scalar(item, lineno, True) for item in inner.split(",")] if inner else []
     if text.startswith("{"):
         if not text.endswith("}"):
             raise YamlSubsetError(f"line {lineno}: unclosed flow map")
@@ -56,14 +59,20 @@ def _scalar(text: str, lineno: int):
             match = KEY.match(item)
             if not match or match.group(1) in result:
                 raise YamlSubsetError(f"line {lineno}: bad or duplicate flow map entry {item!r}")
-            result[match.group(1)] = _scalar(match.group(2) or "", lineno)
+            result[match.group(1)] = _scalar(match.group(2) or "", lineno, True)
         return result
     if len(text) >= 2 and text[0] == text[-1] and text[0] in "'\"":
-        if "\\" in text:
-            raise YamlSubsetError(f"line {lineno}: escapes are not supported")
+        if "\\" in text or text[0] in text[1:-1]:
+            raise YamlSubsetError(f"line {lineno}: escapes and inner quotes are not supported")
         return text[1:-1]
     if text and (text[0] in "&*!|>%@`[]{}," or text.startswith(("- ", "? "))):
         raise YamlSubsetError(f"line {lineno}: unsupported YAML {text!r}")
+    if "'" in text or '"' in text:
+        raise YamlSubsetError(f"line {lineno}: unmatched quote in {text!r}")
+    if ": " in text or text.endswith(":"):
+        raise YamlSubsetError(f"line {lineno}: a plain value may not contain ': ' ({text!r}); quote it")
+    if LEADING_ZERO.match(text):
+        raise YamlSubsetError(f"line {lineno}: number with a leading zero ({text!r}) is ambiguous; quote it")
     lowered = text.lower()
     if lowered in ("", "~", "null"):
         return None

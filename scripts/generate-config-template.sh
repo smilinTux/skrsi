@@ -7,20 +7,33 @@
 # Usage:
 #   scripts/generate-config-template.sh <output-dir>
 #
-# Copies templates/instance-repo/ verbatim into <output-dir>, after clearing it,
-# so a file removed from the source does not survive. No substitution happens:
-# the fixture holds only synthetic names. Used to publish the template repo by
-# hand and by the drift check in .github/workflows/instance-template.yml, which
-# compares the output with the in-repo fixture (and with the published template
-# repo once it exists). It never pushes anything.
+# <output-dir> must be missing, empty, or a git checkout (a clone of the
+# template repo). In a checkout everything except .git is replaced, so a file
+# removed from the source does not survive. It refuses a non-empty directory
+# that is not a checkout, the filesystem root, $HOME, and any directory that is
+# or contains this framework repo. No substitution happens: the fixture holds
+# only synthetic names. It never commits or pushes.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC="$SCRIPT_DIR/../templates/instance-repo"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+SRC="$REPO/templates/instance-repo"
 OUT="${1:?usage: generate-config-template.sh <output-dir>}"
 
-[ -d "$SRC" ] || { echo "generate-config-template.sh: error: missing source: $SRC" >&2; exit 2; }
+die() { echo "generate-config-template.sh: refusing: $*" >&2; exit 2; }
 
+[ -d "$SRC" ] || die "missing source: $SRC"
 mkdir -p "$OUT"
-find "$OUT" -mindepth 1 -delete
-cp -a "$SRC"/. "$OUT"/
+OUT_ABS="$(cd "$OUT" && pwd -P)"
+HOME_ABS="$(cd "${HOME:-/}" 2>/dev/null && pwd -P || echo /)"
+
+[ "$OUT_ABS" != "/" ] || die "output is the filesystem root"
+[ "$OUT_ABS" != "$HOME_ABS" ] || die "output is \$HOME"
+case "$REPO/" in "$OUT_ABS"/*) die "output is or contains the framework repo ($OUT_ABS)" ;; esac
+case "$OUT_ABS/" in "$REPO"/*) die "output is inside the framework repo ($OUT_ABS)" ;; esac
+
+if [ -n "$(ls -A "$OUT_ABS")" ]; then
+  [ -e "$OUT_ABS/.git" ] || die "$OUT_ABS is not empty and not a git checkout"
+  find "$OUT_ABS" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +
+fi
+cp -a "$SRC"/. "$OUT_ABS"/

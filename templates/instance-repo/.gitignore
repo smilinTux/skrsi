@@ -1,0 +1,9 @@
+# Aggregates only. Node-local collector state, raw data and keys never land here.
+*.db
+*.sqlite
+*.jsonl
+*.log
+*.key
+*.pem
+.env
+state/

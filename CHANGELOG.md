@@ -6,6 +6,15 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ### Added
 
+- Card `7aa8e01f` (P1.7): the framework and instance model. `docs/INSTANCE-MODEL.md`; `skrsi.cluster.v1`
+  (`schemas/cluster-v1.schema.json`) for an instance `cluster.yaml`; the instance fixture `templates/instance-repo/`
+  (`CONFIG_SCHEMA` 1, synthetic `cluster.yaml.example`, `baselines/`, `evidence/`, `evaluations/`, a submodule
+  example and an instance CI workflow); `scripts/validate_instance.py`, which uses the `cluster.yaml` node names as
+  the allowlist and rejects addresses, domains, home paths, undeclared nodes, misplaced evidence and content-like
+  fields (also `--scrub` for public trees); its stdlib helpers `scripts/cluster_config.py` (strict YAML subset loader
+  and normative cluster validator) and `scripts/instance_text.py` (address, domain, path and host-name detectors);
+  `scripts/generate-config-template.sh <output-dir>`; and the advisory `instance-template.yml` drift and scrub
+  workflow. `requirements-dev.txt` adds PyYAML for the tests only.
 - Card `3c64c941` (P1.1): `skrsi.lesson.v1` (`schemas/lesson-v1.schema.json`), the front matter of a canon `lesson`
   page, with optional canon envelope fields (`namespace`, `lifecycle`, `edges`, `created`, `updated`,
   `state_refs`); the shared tag vocabulary `schemas/lesson-tags-v1.json` (append-only within v1, pinned by sha256

@@ -57,6 +57,7 @@ Site: <https://skrsi.skworld.io/>.
 - [SOP.md](./SOP.md): architecture, operating model, verification, and rollback.
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md): start here, the four required diagrams, responsibility and evidence boundaries.
 - [docs/CONTRACTS.md](./docs/CONTRACTS.md): versioned public contract catalog.
+- [docs/INSTANCE-MODEL.md](./docs/INSTANCE-MODEL.md): framework and private per-cluster instance repos, `cluster.yaml`, evidence publishing and what an instance may contain.
 - [docs/ADOPTER-GUIDE.md](./docs/ADOPTER-GUIDE.md): minimal integration path.
 - [docs/PLAYBOOK-LANES.md](./docs/PLAYBOOK-LANES.md): lane briefs, landing script and the lessons behind them.
 - [docs/CONFORMANCE.md](./docs/CONFORMANCE.md): conformance levels and checks.

@@ -1,0 +1,7 @@
+# Created by:
+#   git submodule add https://github.com/smilinTux/skrsi.git framework
+#   git -C framework checkout skrsi-vX.Y.Z
+# Pin a release tag, never a branch. A schema change is a submodule bump.
+[submodule "framework"]
+	path = framework
+	url = https://github.com/smilinTux/skrsi.git

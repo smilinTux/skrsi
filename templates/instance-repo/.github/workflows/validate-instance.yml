@@ -1,0 +1,29 @@
+name: Validate instance
+
+# Validates every file in this private instance against the pinned framework:
+# cluster.yaml against the cluster schema, the node-name allowlist, evidence
+# placement, and the rule 7 deny list (no addresses, domains, home paths,
+# content or credentials). The validator is stdlib only, so nothing is
+# installed. Actions are pinned by commit SHA.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          submodules: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Validate instance
+        run: python framework/scripts/validate_instance.py .

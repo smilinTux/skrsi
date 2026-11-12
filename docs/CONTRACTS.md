@@ -12,6 +12,8 @@ record.
 | Evaluation v3 | `schemas/evaluation-v3.schema.json` | Records independent participants, complete PASS metrics, quality gates, missingness, and an evidence-bound outcome. |
 | Evaluation v4 | `schemas/evaluation-v4.schema.json` | Evaluation v3 plus `evidence_class` and an `instrument` self-description; `pass` is impossible for synthetic evidence or when the instrument does not run production code. |
 | Feedback handoff | `schemas/feedback-handoff-v1.schema.json` | Routes a proposal to an existing authority without granting permission to act. |
+| Lesson v1 | `schemas/lesson-v1.schema.json` | Front matter of a canon `lesson` page: one actionable rule of 40 words or fewer, its evidence, the check that enforces it, a lifecycle status and a visibility. |
+| Lesson tags v1 | `schemas/lesson-tags-v1.json` | The one tag vocabulary, shared by lesson `tags` and review failure classes. |
 
 ## Compatibility
 
@@ -63,3 +65,30 @@ are capped at `inconclusive` (or the stronger `fail`, `blocked` or `regression`)
 compare dates, so `validate_v4` in `scripts/build_evaluation.py` is the normative validator: it also recomputes every
 `verdict` from the numbers and requires `window_end` not before `window_start`. The schema carries every rule it can
 express, and the two are tested against each other.
+
+## Lesson v1 and the tag vocabulary
+
+`skrsi.lesson.v1` is the front matter of a canon page of type `lesson`. Fields: `schema`, `id`, `type` (`lesson`),
+`title`, `service` (one or more sk* names), `tags`, `class` (`defect`, `efficiency`, `reliability`, `process`),
+`evidence` (one to ten `{kind, ref}` links to a PR, review, incident, problem, card, artifact or evaluation), `rule`
+(one sentence, 40 words at most), `check` (the test, lint or doctor rule that enforces it, or `none yet`), `status`
+(`proposed`, `active`, `enforced`, `retired`) and `visibility` (`public` or `private`). An `enforced` lesson must name
+its check. Only `public` lessons may be quoted outside the canon, for example on a public PR.
+
+There is deliberately no `recurrence` field, and an authored one fails validation. Recurrence is counted from
+evidence records by the collector. Writing it into front matter would turn every count into an automated canon
+commit.
+
+`schemas/lesson-tags-v1.json` (`skrsi.lesson-tags.v1`) maps each tag to a one-line meaning. It is the single list
+for lesson `tags` and for the `failure_class` of a FAIL review verdict, so one counter covers both. A consumer checks
+membership with a set lookup on the keys of `tags`. A review class that is not in the list is stored as the
+`fallback` value, `unclassified`, and never blocks a verdict. `unclassified` is not a valid lesson tag.
+
+The vocabulary is append-only within v1: adding a tag does not change any existing record's validity, so it does
+not need a new identifier. Removing or renaming a tag, or changing its meaning, breaks recurrence history keyed on
+that tag and requires `lesson-tags-v2`.
+
+`lesson_errors` in `scripts/validate_public.py` is the normative validator (`python scripts/validate_public.py
+--lesson FILE...`). Like `validate_v4`, it is stdlib only. It applies every schema rule, checks every tag against
+the vocabulary, and rejects private or secret-shaped text in any field. The schema cannot read the vocabulary file,
+so a tag check needs the validator; the two are tested against each other on the rules they share.

@@ -1,0 +1,18 @@
+{
+  "$schema_file": "schemas/lesson-v1.schema.json",
+  "schema": "skrsi.lesson.v1",
+  "id": "lesson-example-scope-filter-first",
+  "type": "lesson",
+  "title": "Filter artifacts by scope before taking the newest N",
+  "service": ["skexample"],
+  "tags": ["apply-gate"],
+  "class": "defect",
+  "evidence": [
+    {"kind": "pr", "ref": "example-org/example-repo#1"},
+    {"kind": "evaluation", "ref": "eval-example-gate-001"}
+  ],
+  "rule": "A gate that reads the newest N artifacts must filter them by scope first.",
+  "check": "tests/test_gate.py::test_gate_filters_scope_first",
+  "status": "enforced",
+  "visibility": "public"
+}

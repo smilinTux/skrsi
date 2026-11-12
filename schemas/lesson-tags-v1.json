@@ -1,0 +1,21 @@
+{
+  "schema": "skrsi.lesson-tags.v1",
+  "fallback": "unclassified",
+  "tags": {
+    "acceptance-unmet": "The change does not meet a stated acceptance criterion of its card.",
+    "apply-gate": "A governed apply or its gate ran unrehearsed or read state not filtered to its scope.",
+    "contract-break": "A schema, CLI or file format changed without a new version or a consumer update.",
+    "entity-filter": "A collector listing a directory or table counted non-entities such as hidden or dunder names.",
+    "identity-resolution": "An identity was re-keyed or resolved wrongly and references to the old key were left behind.",
+    "job-failure-streak": "A scheduled job failed repeatedly and nothing raised an incident.",
+    "missing-test": "The behaviour changed but no test fails without the change.",
+    "scope-drift": "The change edits files or behaviour outside the scope of its card.",
+    "signed-manifest-drift": "A signed manifest names a file that was renamed or changed without a re-sign.",
+    "stale-config": "A hardcoded or copied config value went stale while the canonical source moved on.",
+    "stale-deploy": "The live build lags the merged source, so a fix on main is not what runs.",
+    "sync-conflict": "A file in a synced directory was rewritten when unchanged, causing conflicts or churn.",
+    "systemd-oneshot": "A oneshot unit was started from code without --no-block, so the caller timed out mid-work.",
+    "uncommitted-work": "Finished work was left uncommitted or unpushed in a worktree when the turn ended.",
+    "unverified-done": "Work was reported done on a status signal without checking the artifact itself."
+  }
+}

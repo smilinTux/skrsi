@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smilintux.github.io/skrsi/schemas/lesson-v1.schema.json",
+  "title": "SKRSI lesson v1",
+  "description": "Front matter of a canon page of type lesson. Tags must also appear in schemas/lesson-tags-v1.json; validate_public.lesson_errors is the normative validator. There is no recurrence field: recurrence is counted in evidence records, never authored.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "type", "title", "service", "tags", "class", "evidence", "rule", "check", "status", "visibility"],
+  "properties": {
+    "schema": {"const": "skrsi.lesson.v1"},
+    "id": {"type": "string", "pattern": "^lesson-[a-z0-9][a-z0-9-]{2,95}$"},
+    "type": {"const": "lesson"},
+    "title": {"type": "string", "minLength": 1, "maxLength": 120, "pattern": "^[^\\n]+$"},
+    "service": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^sk[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 64}
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$", "maxLength": 64}
+    },
+    "class": {"enum": ["defect", "efficiency", "reliability", "process"]},
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "ref"],
+        "properties": {
+          "kind": {"enum": ["pr", "review", "incident", "problem", "card", "artifact", "evaluation"]},
+          "ref": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/#@-]{0,199}$"}
+        }
+      }
+    },
+    "rule": {
+      "description": "One actionable sentence, 40 words at most.",
+      "type": "string",
+      "maxLength": 400,
+      "pattern": "^(?![\\s\\S]*\\n)\\s*\\S+(?:\\s+\\S+){0,39}\\s*$"
+    },
+    "check": {
+      "description": "The test, lint or doctor rule that enforces the lesson, or the literal none yet.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\n]+$"
+    },
+    "status": {"enum": ["proposed", "active", "enforced", "retired"]},
+    "visibility": {"enum": ["public", "private"]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "enforced"}}, "required": ["status"]},
+      "then": {"properties": {"check": {"not": {"const": "none yet"}}}}
+    }
+  ]
+}

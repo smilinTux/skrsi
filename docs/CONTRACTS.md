@@ -28,6 +28,17 @@ record.
 - Timestamps use RFC 3339 UTC values. Digests use lowercase SHA-256 hex.
 - Identifiers are opaque. They must not contain credentials, protected content,
   personal filesystem paths, or private host names.
+- Carve-out for vocabularies: `schemas/lesson-tags-v1.json` is not a schema but a
+  list, and it is append-only within v1. A tag may be added in place. Renaming or
+  removing a tag, or changing its meaning, requires a new file
+  `schemas/lesson-tags-v2.json` with identifier `skrsi.lesson-tags.v2`. Consumers
+  either read the list from the skrsi checkout path or pin it by digest. The
+  current file is `sha256:f022ecd16d8858165e6ed88da77958f0f80f7be4c24e2447c532b5203e37bc1f`; every append updates
+  this line (a test enforces it). A consumer on an older pin does not know a newly
+  appended tag and maps it to the `fallback` value, `unclassified`, which is the
+  expected degradation, not an error.
+- Canon envelope dates (`created`, `updated` on a lesson) are ISO 8601 calendar
+  dates (`YYYY-MM-DD`), matching canon pages, not RFC 3339 timestamps.
 
 ## Processing rules
 
@@ -73,7 +84,21 @@ express, and the two are tested against each other.
 `evidence` (one to ten `{kind, ref}` links to a PR, review, incident, problem, card, artifact or evaluation), `rule`
 (one sentence, 40 words at most), `check` (the test, lint or doctor rule that enforces it, or `none yet`), `status`
 (`proposed`, `active`, `enforced`, `retired`) and `visibility` (`public` or `private`). An `enforced` lesson must name
-its check. Only `public` lessons may be quoted outside the canon, for example on a public PR.
+its check. Only `public` lessons may be quoted outside the canon, for example on a public PR. `service` names are
+tag-shaped (`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`), so `sk-standards`, `cloud9` and `capauth` are valid. No string field
+may end in a newline; the schema patterns are anchored so a trailing newline is rejected there as it is in the
+validator.
+
+Because a lesson is canon page front matter, it may also carry the canon envelope that every skbrain-ops page has. All
+five fields are optional, and any other field still fails validation:
+
+- `namespace`: the canon namespace, a lowercase slug (`ops` for skbrain-ops).
+- `lifecycle`: `draft`, `reviewed` or `canon`.
+- `edges`: up to 50 typed links in the canon edge shape, `{target, type?}`, where `target` is a page slug and `type`
+  is a snake_case edge type such as `touches` or `remediates`. The canon parser's string shorthand is not accepted.
+- `created`, `updated`: ISO 8601 date strings. YAML parses an unquoted `2026-11-12` into a date object, so a consumer
+  that reads front matter (skbrain lint, P1.4) must convert dates to `YYYY-MM-DD` strings before validating. Neither
+  the schema nor the validator accepts a date object.
 
 There is deliberately no `recurrence` field, and an authored one fails validation. Recurrence is counted from
 evidence records by the collector. Writing it into front matter would turn every count into an automated canon
@@ -90,5 +115,9 @@ that tag and requires `lesson-tags-v2`.
 
 `lesson_errors` in `scripts/validate_public.py` is the normative validator (`python scripts/validate_public.py
 --lesson FILE...`). Like `validate_v4`, it is stdlib only. It applies every schema rule, checks every tag against
-the vocabulary, and rejects private or secret-shaped text in any field. The schema cannot read the vocabulary file,
-so a tag check needs the validator; the two are tested against each other on the rules they share.
+the vocabulary, and, for a lesson whose `visibility` is not `private`, rejects text matching the repo's public
+artifact floor (`FORBIDDEN`: home and mount paths, one private host prefix, token names). That floor is only a floor.
+It is not the private hostname check and does not know the estate's host names. The real check is skbrain lint
+(P1.4, skos `secrets.py`), which runs before every canon commit. A `private` lesson may name local paths, since it is
+never quoted outside the canon. The schema cannot read the vocabulary file, so a tag check needs the validator; the
+two are tested against each other on the rules they share.

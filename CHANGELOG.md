@@ -7,9 +7,9 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 ### Added
 
 - Card `3c64c941` (P1.1): `skrsi.lesson.v1` (`schemas/lesson-v1.schema.json`), the front matter of a canon `lesson`
-  page, with optional canon envelope fields (`namespace`, `lifecycle`, `edges`, `created`, `updated`); the shared tag
-  vocabulary `schemas/lesson-tags-v1.json` (append-only within v1, pinned by sha256 in `docs/CONTRACTS.md`); a
-  synthetic example; and `lesson_errors`, the stdlib-only normative validator (`validate_public.py --lesson FILE...`).
+  page, with optional canon envelope fields (`namespace`, `lifecycle`, `edges`, `created`, `updated`,
+  `state_refs`); the shared tag vocabulary `schemas/lesson-tags-v1.json` (append-only within v1, pinned by sha256
+  in `docs/CONTRACTS.md`); a synthetic example; and `lesson_errors`, the stdlib-only normative validator (`validate_public.py --lesson FILE...`).
   No `recurrence` field: recurrence is counted in evidence records, never authored.
 - `templates/merge.sh`: merge a reviewed PR without a board, with the same gates as `land.sh`.
 - `templates/remote-test.sh`: generic remote Rust build and test runner (rsync, shared target directory, throwaway

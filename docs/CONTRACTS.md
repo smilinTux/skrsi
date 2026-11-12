@@ -90,7 +90,7 @@ may end in a newline; the schema patterns are anchored so a trailing newline is 
 validator.
 
 Because a lesson is canon page front matter, it may also carry the canon envelope that every skbrain-ops page has. All
-five fields are optional, and any other field still fails validation:
+six fields are optional, and any other field still fails validation:
 
 - `namespace`: the canon namespace, a lowercase slug (`ops` for skbrain-ops).
 - `lifecycle`: `draft`, `reviewed` or `canon`.
@@ -99,6 +99,23 @@ five fields are optional, and any other field still fails validation:
 - `created`, `updated`: ISO 8601 date strings. YAML parses an unquoted `2026-11-12` into a date object, so a consumer
   that reads front matter (skbrain lint, P1.4) must convert dates to `YYYY-MM-DD` strings before validating. Neither
   the schema nor the validator accepts a date object.
+- `state_refs`: pointers into operational stores, never state itself, in the shape skbrain-ops pages use. An object
+  with at most two keys, both optional: `kedb`, a known-error id of the form `ke-<slug>` (for example
+  `ke-2d21671f` or `ke-outbox-flood`), and `actions`, a list of up to 10 unique operator standard-action names in the
+  tag shape (for example `[restart-dashboard]`; an empty list is valid). Any other key fails validation.
+
+A lesson derived from a known error points to its `ke-*` page through `edges` (for example
+`{target: ke-outbox-flood, type: remediates}`) or through `state_refs.kedb`, not through an `evidence` kind. Evidence
+kinds name the records that show the lesson happened (a PR, a review, an incident); the known error is a canon page,
+and canon pages are linked by edges.
+
+`origin`, `source_repo` and `source_path` are deliberately not part of v1, and a lesson that carries one fails
+validation. Lessons live in `pages/lessons/` of the canon repo, and the canon parser supplies the origin of every page
+it reads, so an authored copy could only disagree with it. A `source_path` would also put a path into front matter
+that may be quoted outside the canon.
+
+Canon `tags` on a lesson are limited to the vocabulary below. That differs from other canon page types, whose `tags`
+are free topic tags. P1.3 records this rule in the skbrain-ops `AGENTS.md`.
 
 There is deliberately no `recurrence` field, and an authored one fails validation. Recurrence is counted from
 evidence records by the collector. Writing it into front matter would turn every count into an automated canon
@@ -120,4 +137,6 @@ artifact floor (`FORBIDDEN`: home and mount paths, one private host prefix, toke
 It is not the private hostname check and does not know the estate's host names. The real check is skbrain lint
 (P1.4, skos `secrets.py`), which runs before every canon commit. A `private` lesson may name local paths, since it is
 never quoted outside the canon. The schema cannot read the vocabulary file, so a tag check needs the validator; the
-two are tested against each other on the rules they share.
+two are tested against each other on the rules they share. A consumer that uses the schema alone must turn on format checking (for
+example `jsonschema.FormatChecker` in Python); without it `format: date` is an annotation only, and a date such as
+`2026-02-30` passes. A consumer that cannot do that uses `lesson_errors`.

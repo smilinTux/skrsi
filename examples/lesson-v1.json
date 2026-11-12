@@ -14,5 +14,6 @@
   "rule": "A gate that reads the newest N artifacts must filter them by scope first.",
   "check": "tests/test_gate.py::test_gate_filters_scope_first",
   "status": "enforced",
-  "visibility": "public"
+  "visibility": "public",
+  "state_refs": {"kedb": "ke-example-gate-scope", "actions": ["rerun-gate"]}
 }

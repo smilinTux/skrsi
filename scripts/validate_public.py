@@ -59,7 +59,7 @@ LESSON_FIELDS = (
     "schema", "id", "type", "title", "service", "tags", "class",
     "evidence", "rule", "check", "status", "visibility",
 )
-ENVELOPE_FIELDS = ("namespace", "lifecycle", "edges", "created", "updated")
+ENVELOPE_FIELDS = ("namespace", "lifecycle", "edges", "created", "updated", "state_refs")
 LESSON_ENUMS = {
     "class": ("defect", "efficiency", "reliability", "process"),
     "status": ("proposed", "active", "enforced", "retired"),
@@ -74,6 +74,8 @@ LIFECYCLES = ("draft", "reviewed", "canon")
 EDGE_TARGET = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 EDGE_TYPE = re.compile(r"[a-z][a-z0-9_]*")
 ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+KEDB_ID = re.compile(r"ke-[a-z0-9]+(?:-[a-z0-9]+)*")
+ACTION = TAG
 
 
 def _unique(items: list) -> bool:
@@ -114,6 +116,26 @@ def _envelope_errors(errors: list[str], instance: dict) -> None:
     for field in ("created", "updated"):
         if field in instance and not _iso_date(get(field)):
             errors.append(f"{field}: must be an ISO 8601 date string (YYYY-MM-DD); normalize YAML dates first")
+    if "state_refs" in instance:
+        refs = get("state_refs")
+        if not isinstance(refs, dict):
+            errors.append("state_refs: must be an object with optional kedb and actions")
+            return
+        for key in sorted(set(refs) - {"kedb", "actions"}):
+            errors.append(f"state_refs: unknown key {key!r} (only kedb and actions)")
+        if "kedb" in refs and not (isinstance(refs["kedb"], str) and len(refs["kedb"]) <= 100
+                                   and KEDB_ID.fullmatch(refs["kedb"])):
+            errors.append("state_refs.kedb: must be a ke-<slug> known-error id")
+        if "actions" in refs:
+            actions = refs["actions"]
+            if not isinstance(actions, list) or len(actions) > 10:
+                errors.append("state_refs.actions: must be a list of at most 10 action names")
+            else:
+                if not _unique(actions):
+                    errors.append("state_refs.actions: items must be unique")
+                for action in actions:
+                    if not (isinstance(action, str) and len(action) <= 64 and ACTION.fullmatch(action)):
+                        errors.append(f"state_refs.actions: malformed action {action!r}")
 
 
 def _line(value, max_length: int) -> bool:

@@ -325,8 +325,10 @@ class LessonContractTests(unittest.TestCase):
             "schema", "id", "type", "title", "service", "tags", "class",
             "evidence", "rule", "check", "status", "visibility",
         }
-        envelope = {"namespace", "lifecycle", "edges", "created", "updated"}
+        envelope = {"namespace", "lifecycle", "edges", "created", "updated", "state_refs"}
         self.assertEqual(set(schema["properties"]), expected | envelope)
+        for excluded in ("origin", "source_repo", "source_path"):
+            self.assertNotIn(excluded, schema["properties"])
         self.assertEqual(set(schema["required"]), expected)
         self.assertFalse(schema["additionalProperties"])
         self.assertEqual(schema["properties"]["visibility"]["enum"], ["public", "private"])
@@ -388,6 +390,7 @@ class LessonContractTests(unittest.TestCase):
             ],
             "created": "2026-11-12",
             "updated": "2026-11-12",
+            "state_refs": {"kedb": "ke-example-gate-scope", "actions": ["restart-example", "rerun-gate"]},
         })
         return instance
 
@@ -396,7 +399,7 @@ class LessonContractTests(unittest.TestCase):
         instance = self.envelope()
         self.assertEqual(lesson_errors(instance), [])
         self.assertTrue(schema.is_valid(instance), [e.message for e in schema.iter_errors(instance)])
-        for field in ("namespace", "lifecycle", "edges", "created", "updated"):
+        for field in ("namespace", "lifecycle", "edges", "created", "updated", "state_refs"):
             partial = self.envelope()
             partial.pop(field)
             with self.subTest(missing=field):
@@ -416,6 +419,15 @@ class LessonContractTests(unittest.TestCase):
             ("edges", [{"target": "a", "type": "Touches"}]), ("edges", [{"target": "a", "type": "touches\n"}]),
             ("created", "2026-11-12"), ("created", "2026-02-30"), ("created", "20261112"),
             ("created", "2026-11-12\n"), ("created", "2026-11-12T00:00:00Z"), ("updated", 20261112),
+            ("state_refs", {}), ("state_refs", {"kedb": "ke-example-gate-scope"}),
+            ("state_refs", {"kedb": "ke-2d21671f"}), ("state_refs", {"actions": ["restart-example"]}),
+            ("state_refs", {"actions": []}), ("state_refs", {"kedb": "ke-a", "actions": ["rerun-gate", "purge-x"]}),
+            ("state_refs", {"kedb": "ke-a", "incident": "inc-1"}), ("state_refs", {"kedb": "lesson-abc"}),
+            ("state_refs", {"kedb": "ke-"}), ("state_refs", {"kedb": "KE-abc"}), ("state_refs", {"kedb": "ke-abc\n"}),
+            ("state_refs", {"kedb": ["ke-abc"]}), ("state_refs", {"actions": ["rerun-gate", "rerun-gate"]}),
+            ("state_refs", {"actions": ["rerun-gate\n"]}), ("state_refs", {"actions": ["Rerun_Gate"]}),
+            ("state_refs", {"actions": "rerun-gate"}), ("state_refs", {"actions": ["a"] + [f"a{i}" for i in range(10)]}),
+            ("state_refs", "ke-abc"), ("state_refs", []),
         ]
         for field, value in cases:
             instance = copy.deepcopy(base)
@@ -423,6 +435,28 @@ class LessonContractTests(unittest.TestCase):
             schema_ok = schema.is_valid(instance)
             with self.subTest(field=field, value=value):
                 self.assertEqual(lesson_errors(instance) == [], schema_ok)
+
+    def test_state_refs_rejections_named_in_review(self):
+        cases = [
+            ({"kedb": "ke-a", "incident": "inc-1"}, "state_refs"),
+            ({"kedb": "postmortem-a"}, "state_refs.kedb"),
+            ({"actions": ["rerun-gate", "rerun-gate"]}, "state_refs.actions"),
+            ({"kedb": "ke-abc\n"}, "state_refs.kedb"),
+            ({"actions": ["rerun-gate\n"]}, "state_refs.actions"),
+        ]
+        for value, needle in cases:
+            instance = self.envelope()
+            instance["state_refs"] = value
+            with self.subTest(state_refs=value):
+                self.assertRejected(instance, needle)
+
+    def test_source_fields_are_not_part_of_the_lesson(self):
+        for field, value in (("origin", "skbrain-ops"), ("source_repo", "skbrain-ops"),
+                             ("source_path", "pages/lessons/lesson-x.md")):
+            instance = self.envelope()
+            instance[field] = value
+            with self.subTest(field=field):
+                self.assertRejected(instance, field)
 
     def test_service_names_are_tag_shaped(self):
         schema = Draft202012Validator(load_json("schemas/lesson-v1.schema.json"), format_checker=FormatChecker())

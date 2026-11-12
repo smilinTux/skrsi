@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import re
 import subprocess
@@ -9,7 +10,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
 
-from scripts.validate_public import scan
+from scripts.validate_public import lesson_errors, load_lesson_tags, scan
 from scripts.migrate_evaluation_v2_to_v3 import migrate
 
 
@@ -30,12 +31,12 @@ def validator_for_example(relative: str) -> tuple[Draft202012Validator, dict]:
 class PublicContractTests(unittest.TestCase):
     def test_schemas_and_examples_validate(self):
         schemas = {}
-        for path in sorted((ROOT / "schemas").glob("*.json")):
+        for path in sorted((ROOT / "schemas").glob("*.schema.json")):
             schema = json.loads(path.read_text(encoding="utf-8"))
             Draft202012Validator.check_schema(schema)
             schemas[path.relative_to(ROOT).as_posix()] = schema
 
-        self.assertEqual(len(schemas), 6)
+        self.assertEqual(len(schemas), 7)
         for path in sorted((ROOT / "examples").glob("*.json")):
             instance = json.loads(path.read_text(encoding="utf-8"))
             schema_path = instance.pop("$schema_file")
@@ -275,6 +276,278 @@ class PublicContractTests(unittest.TestCase):
         for index, document in enumerate(corpus):
             with self.subTest(index=index):
                 validator.validate(migrate(document))
+
+
+class LessonContractTests(unittest.TestCase):
+    def lesson(self) -> dict:
+        instance = load_json("examples/lesson-v1.json")
+        instance.pop("$schema_file")
+        return instance
+
+    def assertRejected(self, instance: dict, needle: str, schema_too: bool = True) -> None:
+        errors = lesson_errors(instance)
+        self.assertTrue(errors, "lesson was accepted")
+        self.assertTrue(any(needle in error for error in errors), errors)
+        if schema_too:
+            schema = load_json("schemas/lesson-v1.schema.json")
+            with self.assertRaises(ValidationError):
+                Draft202012Validator(schema, format_checker=FormatChecker()).validate(instance)
+
+    def test_example_lesson_validates(self):
+        self.assertEqual(lesson_errors(self.lesson()), [])
+
+    def test_validator_and_schema_agree_on_schema_rules(self):
+        schema = Draft202012Validator(load_json("schemas/lesson-v1.schema.json"), format_checker=FormatChecker())
+        base = self.lesson()
+        cases = [
+            ("id", "lesson-ab"), ("id", "lesson-abc"), ("id", "note-abc"),
+            ("title", ""), ("title", "x" * 120), ("title", "x" * 121), ("title", "a\nb"),
+            ("service", []), ("service", ["skone"]), ("service", ["other"]), ("service", ["skone", "skone"]),
+            ("tags", []), ("tags", ["apply-gate"] * 2), ("tags", ["Apply"]),
+            ("class", "defect"), ("class", "style"),
+            ("evidence", [{"kind": "pr", "ref": "a#1"}]), ("evidence", [{"kind": "chat", "ref": "a"}]),
+            ("evidence", [{"kind": "pr", "ref": "has space"}]), ("evidence", [{"kind": "pr"}]),
+            ("evidence", [{"kind": "pr", "ref": "a", "note": "x"}]), ("evidence", ["a#1"]),
+            ("rule", ""), ("rule", "word"), ("rule", "two\nlines"),
+            ("check", "none yet"), ("check", ""), ("status", "active"), ("visibility", "internal"),
+            ("schema", "skrsi.lesson.v2"), ("type", "postmortem"),
+        ]
+        for field, value in cases:
+            instance = copy.deepcopy(base)
+            instance[field] = value
+            schema_ok = schema.is_valid(instance)
+            with self.subTest(field=field, value=value):
+                self.assertEqual(lesson_errors(instance) == [], schema_ok)
+
+    def test_schema_has_spec_fields_plus_visibility_and_no_recurrence(self):
+        schema = load_json("schemas/lesson-v1.schema.json")
+        expected = {
+            "schema", "id", "type", "title", "service", "tags", "class",
+            "evidence", "rule", "check", "status", "visibility",
+        }
+        envelope = {"namespace", "lifecycle", "edges", "created", "updated", "state_refs"}
+        self.assertEqual(set(schema["properties"]), expected | envelope)
+        for excluded in ("origin", "source_repo", "source_path"):
+            self.assertNotIn(excluded, schema["properties"])
+        self.assertEqual(set(schema["required"]), expected)
+        self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(schema["properties"]["visibility"]["enum"], ["public", "private"])
+        self.assertNotIn("recurrence", schema["properties"])
+
+    def test_rejects_rule_over_40_words(self):
+        instance = self.lesson()
+        instance["rule"] = " ".join(["word"] * 41)
+        self.assertRejected(instance, "rule")
+        instance["rule"] = " ".join(["word"] * 40)
+        self.assertEqual(lesson_errors(instance), [])
+
+    def test_rejects_missing_or_empty_evidence(self):
+        instance = self.lesson()
+        instance["evidence"] = []
+        self.assertRejected(instance, "evidence")
+        instance.pop("evidence")
+        self.assertRejected(instance, "evidence")
+
+    def test_rejects_unknown_status(self):
+        instance = self.lesson()
+        instance["status"] = "archived"
+        self.assertRejected(instance, "status")
+
+    def test_rejects_unknown_tag(self):
+        instance = self.lesson()
+        instance["tags"] = ["not-in-vocabulary"]
+        self.assertRejected(instance, "not-in-vocabulary", schema_too=False)
+
+    def test_rejects_fallback_class_as_lesson_tag(self):
+        instance = self.lesson()
+        instance["tags"] = [load_lesson_tags()["fallback"]]
+        self.assertRejected(instance, "unknown tag", schema_too=False)
+
+    def test_rejects_authored_recurrence(self):
+        instance = self.lesson()
+        instance["recurrence"] = 3
+        self.assertRejected(instance, "recurrence")
+
+    def test_enforced_lesson_names_its_check(self):
+        instance = self.lesson()
+        instance["status"] = "enforced"
+        instance["check"] = "none yet"
+        self.assertRejected(instance, "check")
+
+    def test_rejects_private_host_in_lesson_text(self):
+        instance = self.lesson()
+        instance["title"] = "seen on " + "chi" + "ap99"
+        self.assertRejected(instance, "title", schema_too=False)
+
+    def envelope(self) -> dict:
+        instance = self.lesson()
+        instance.update({
+            "namespace": "ops",
+            "lifecycle": "canon",
+            "edges": [
+                {"target": "service-skexample", "type": "touches"},
+                {"target": "ke-example-gate-scope"},
+            ],
+            "created": "2026-11-12",
+            "updated": "2026-11-12",
+            "state_refs": {"kedb": "ke-example-gate-scope", "actions": ["restart-example", "rerun-gate"]},
+        })
+        return instance
+
+    def test_canon_envelope_fields_are_optional_and_validate(self):
+        schema = Draft202012Validator(load_json("schemas/lesson-v1.schema.json"), format_checker=FormatChecker())
+        instance = self.envelope()
+        self.assertEqual(lesson_errors(instance), [])
+        self.assertTrue(schema.is_valid(instance), [e.message for e in schema.iter_errors(instance)])
+        for field in ("namespace", "lifecycle", "edges", "created", "updated", "state_refs"):
+            partial = self.envelope()
+            partial.pop(field)
+            with self.subTest(missing=field):
+                self.assertEqual(lesson_errors(partial), [])
+                self.assertTrue(schema.is_valid(partial))
+
+    def test_validator_and_schema_agree_on_envelope_fields(self):
+        schema = Draft202012Validator(load_json("schemas/lesson-v1.schema.json"), format_checker=FormatChecker())
+        base = self.envelope()
+        cases = [
+            ("namespace", "ops"), ("namespace", ""), ("namespace", "Ops"), ("namespace", "ops\n"),
+            ("lifecycle", "draft"), ("lifecycle", "reviewed"), ("lifecycle", "published"),
+            ("edges", []), ("edges", [{"target": "node-example-1", "type": "runs_on"}]),
+            ("edges", [{"type": "touches"}]), ("edges", [{"target": "a", "type": "touches", "weight": 1}]),
+            ("edges", ["service-skexample:touches"]), ("edges", "service-skexample"),
+            ("edges", [{"target": "has space"}]), ("edges", [{"target": "a\n"}]),
+            ("edges", [{"target": "a", "type": "Touches"}]), ("edges", [{"target": "a", "type": "touches\n"}]),
+            ("created", "2026-11-12"), ("created", "2026-02-30"), ("created", "20261112"),
+            ("created", "2026-11-12\n"), ("created", "2026-11-12T00:00:00Z"), ("updated", 20261112),
+            ("state_refs", {}), ("state_refs", {"kedb": "ke-example-gate-scope"}),
+            ("state_refs", {"kedb": "ke-2d21671f"}), ("state_refs", {"actions": ["restart-example"]}),
+            ("state_refs", {"actions": []}), ("state_refs", {"kedb": "ke-a", "actions": ["rerun-gate", "purge-x"]}),
+            ("state_refs", {"kedb": "ke-a", "incident": "inc-1"}), ("state_refs", {"kedb": "lesson-abc"}),
+            ("state_refs", {"kedb": "ke-"}), ("state_refs", {"kedb": "KE-abc"}), ("state_refs", {"kedb": "ke-abc\n"}),
+            ("state_refs", {"kedb": ["ke-abc"]}), ("state_refs", {"actions": ["rerun-gate", "rerun-gate"]}),
+            ("state_refs", {"actions": ["rerun-gate\n"]}), ("state_refs", {"actions": ["Rerun_Gate"]}),
+            ("state_refs", {"actions": "rerun-gate"}), ("state_refs", {"actions": ["a"] + [f"a{i}" for i in range(10)]}),
+            ("state_refs", "ke-abc"), ("state_refs", []),
+        ]
+        for field, value in cases:
+            instance = copy.deepcopy(base)
+            instance[field] = value
+            schema_ok = schema.is_valid(instance)
+            with self.subTest(field=field, value=value):
+                self.assertEqual(lesson_errors(instance) == [], schema_ok)
+
+    def test_state_refs_rejections_named_in_review(self):
+        cases = [
+            ({"kedb": "ke-a", "incident": "inc-1"}, "state_refs"),
+            ({"kedb": "postmortem-a"}, "state_refs.kedb"),
+            ({"actions": ["rerun-gate", "rerun-gate"]}, "state_refs.actions"),
+            ({"kedb": "ke-abc\n"}, "state_refs.kedb"),
+            ({"actions": ["rerun-gate\n"]}, "state_refs.actions"),
+        ]
+        for value, needle in cases:
+            instance = self.envelope()
+            instance["state_refs"] = value
+            with self.subTest(state_refs=value):
+                self.assertRejected(instance, needle)
+
+    def test_source_fields_are_not_part_of_the_lesson(self):
+        for field, value in (("origin", "skbrain-ops"), ("source_repo", "skbrain-ops"),
+                             ("source_path", "pages/lessons/lesson-x.md")):
+            instance = self.envelope()
+            instance[field] = value
+            with self.subTest(field=field):
+                self.assertRejected(instance, field)
+
+    def test_service_names_are_tag_shaped(self):
+        schema = Draft202012Validator(load_json("schemas/lesson-v1.schema.json"), format_checker=FormatChecker())
+        for name, ok in (("sk-standards", True), ("sk-cron-run", True), ("cloud9", True), ("capauth", True),
+                         ("SK_Bad", False), ("a--b", False)):
+            instance = self.lesson()
+            instance["service"] = [name]
+            with self.subTest(service=name):
+                self.assertEqual(lesson_errors(instance) == [], ok)
+                self.assertEqual(schema.is_valid(instance), ok)
+
+    def test_validator_and_schema_agree_on_trailing_newline(self):
+        schema = Draft202012Validator(load_json("schemas/lesson-v1.schema.json"), format_checker=FormatChecker())
+        cases = [
+            ("title", "A title\n"), ("check", "tests/test_gate.py\n"), ("id", "lesson-abc\n"),
+            ("service", ["skexample\n"]), ("tags", ["apply-gate\n"]),
+            ("evidence", [{"kind": "pr", "ref": "example-org/example-repo#1\n"}]), ("rule", "One rule.\n"),
+        ]
+        for field, value in cases:
+            instance = self.lesson()
+            instance[field] = value
+            with self.subTest(field=field):
+                self.assertNotEqual(lesson_errors(instance), [])
+                self.assertFalse(schema.is_valid(instance))
+
+    def test_validator_and_schema_agree_on_key_reordered_duplicate_evidence(self):
+        schema = Draft202012Validator(load_json("schemas/lesson-v1.schema.json"), format_checker=FormatChecker())
+        instance = self.lesson()
+        instance["evidence"] = [{"kind": "pr", "ref": "a#1"}, {"ref": "a#1", "kind": "pr"}]
+        self.assertFalse(schema.is_valid(instance))
+        self.assertTrue(any("unique" in error for error in lesson_errors(instance)), lesson_errors(instance))
+
+    def test_private_text_floor_applies_to_public_lessons_only(self):
+        instance = self.lesson()
+        instance["rule"] = "Never write scratch files under " + "/" + "home/ in a shared checkout."
+        instance["visibility"] = "private"
+        self.assertEqual(lesson_errors(instance), [])
+        instance["visibility"] = "public"
+        self.assertTrue(any(error.startswith("rule: private") for error in lesson_errors(instance)))
+
+    def run_cli(self, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(ROOT / "scripts" / "validate_public.py"), *args],
+                              capture_output=True, text=True, cwd=ROOT)
+
+    def test_cli_lesson_without_file_is_a_usage_error(self):
+        result = self.run_cli("--lesson")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("usage", result.stderr.lower())
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_cli_lesson_file_that_is_not_an_object_is_a_clean_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, text in (("list.json", "[1, 2]"), ("broken.json", "{not json")):
+                path = Path(tmp) / name
+                path.write_text(text, encoding="utf-8")
+                result = self.run_cli("--lesson", str(path))
+                with self.subTest(file=name):
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(name, result.stderr)
+                    self.assertNotIn("Traceback", result.stderr)
+
+    def test_cli_validates_the_example(self):
+        result = self.run_cli("--lesson", "examples/lesson-v1.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_tag_vocabulary_checksum_is_recorded_in_contracts_doc(self):
+        digest = hashlib.sha256((ROOT / "schemas" / "lesson-tags-v1.json").read_bytes()).hexdigest()
+        contracts = (ROOT / "docs" / "CONTRACTS.md").read_text(encoding="utf-8")
+        self.assertIn(f"sha256:{digest}", contracts)
+        self.assertIn("lesson-tags-v2", contracts)
+
+    def test_changelog_records_lesson_contract(self):
+        changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        unreleased = changelog.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+        self.assertIn("skrsi.lesson.v1", unreleased)
+        self.assertIn("3c64c941", unreleased)
+
+    def test_tag_vocabulary_is_one_simple_versioned_list(self):
+        vocabulary = load_lesson_tags()
+        self.assertEqual(set(vocabulary), {"schema", "fallback", "tags"})
+        self.assertEqual(vocabulary["schema"], "skrsi.lesson-tags.v1")
+        self.assertEqual(vocabulary["fallback"], "unclassified")
+        self.assertNotIn(vocabulary["fallback"], vocabulary["tags"])
+        self.assertTrue(8 <= len(vocabulary["tags"]) <= 24)
+        tag_shape = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+        for tag, meaning in vocabulary["tags"].items():
+            with self.subTest(tag=tag):
+                self.assertRegex(tag, tag_shape)
+                self.assertIsInstance(meaning, str)
+                self.assertTrue(0 < len(meaning) <= 120)
+                self.assertNotIn("\n", meaning)
 
 
 if __name__ == "__main__":

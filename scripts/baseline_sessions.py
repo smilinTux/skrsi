@@ -65,7 +65,7 @@ def main() -> int:
     def extra(p):
         p.add_argument("--projects", required=True)
         p.add_argument("--days", type=int, default=7)
-        p.add_argument("--share-model", default="opus", help="substring of the model name for the output share")
+        p.add_argument("--share-model", default="opus", help="substring of the model name for the output share (opus-5-5 for one model)")
     a = bc.cli(__doc__.splitlines()[0], extra)
     return bc.run(compute(a.projects, a.end, a.days, a.share_model))
 

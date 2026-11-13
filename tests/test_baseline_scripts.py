@@ -246,7 +246,8 @@ class Itil(Fixture):
         for n in "123":
             put(f"kedb/ke-{n}.json", {"id": n})
         r = itil.compute(self.dir, "2026-11-11")
-        self.assertEqual((r["incidents"], r["incidents_linked"], r["problems"], r["kedb_entries"]), (3, 2, 2, 3))
+        self.assertEqual((r["incidents"], r["incidents_linked"], r["incidents_listed_by_problem"]), (3, 1, 2))
+        self.assertEqual((r["problems"], r["kedb_entries"]), (2, 3))
         assert_clean(self, r)
 
 

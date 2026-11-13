@@ -549,6 +549,14 @@ class LessonContractTests(unittest.TestCase):
                 self.assertTrue(0 < len(meaning) <= 120)
                 self.assertNotIn("\n", meaning)
 
+    def test_tag_vocabulary_covers_the_p1_5_seed_lessons(self):
+        # Card c2a1f223 (P1.5): tags for the seed lesson candidates, appended within v1.
+        tags = load_lesson_tags()["tags"]
+        for tag in ("disk-budget", "no-failover", "post-apply-check", "stale-evidence", "start-order",
+                    "test-isolation", "turn-end-wait", "unalerted-failure", "unclaimed-work"):
+            with self.subTest(tag=tag):
+                self.assertIn(tag, tags)
+
 
 if __name__ == "__main__":
     unittest.main()

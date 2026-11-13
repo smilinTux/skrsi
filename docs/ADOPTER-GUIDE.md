@@ -173,6 +173,28 @@ record, and review is what catches it.
 
 `--note` records a known gap as missingness and leads the comment. The workflow uses it to name a bench that failed.
 
+## Baseline scripts
+
+The `scripts/baseline_*.py` scripts freeze a measured baseline so a later review has something to compare against. Each
+takes its source paths and a window end date (`--end YYYY-MM-DD`, the last day included, UTC), reads its source
+read-only, and prints one JSON aggregate document of counts, rates and durations. They run out of band and add nothing
+to a request, claim, dispatch, completion, search or session start. The numbers they print belong in the private
+instance repo under `baselines/`, never in this repo.
+
+| Script | Source | Reports |
+|---|---|---|
+| `baseline_sessions.py` | Claude Code transcripts (usage fields only) | turns, sessions, cache and output tokens, context per turn and at session start, share of input from turns above 200k |
+| `baseline_gateway.py` | gateway `metrics.db` (read-only) and the deploy checkout | route status counts, rows with no cost, rows with no caller identity, build commit and how far it trails main |
+| `baseline_cron.py` | sk-cron-run ledger | runs, failure rate, failure streaks per job |
+| `baseline_github.py` | recorded `gh pr list --json number,title,mergedAt` output | merged PRs and the share titled as fixes |
+| `baseline_cardstore.py` | coord `card_events` | verdict links, review rounds, first-pass cards |
+| `baseline_itil.py` | ITIL store | incidents, incidents linked to a problem, problems, known-error entries |
+| `baseline_skmemory.py` | skmemory `retrieval.jsonl` | search latency percentiles and the share of searches with an arm timeout |
+| `baseline_skwhisper.py` | skwhisper daemon log | whisper context writes and digests per day |
+
+`baseline_common.py` holds the window and percentile helpers (nearest rank). `tests/test_baseline_scripts.py` pins every
+script to a hand-computed fixture and scans each output for content, addresses and host-shaped names.
+
 ## Build-quality telemetry
 
 `python3 scripts/build_telemetry.py --repo OWNER/NAME --prs 92-117 --md report.md --metrics-out window.json` computes

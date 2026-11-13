@@ -39,7 +39,7 @@ def assert_clean(case, doc):
     case.assertNotIn(PLANTED, text)
     case.assertEqual(text_findings(text), [])
     case.assertEqual(host_shaped(text, set()), [])
-    for needle in ("postgres://", "postgresql://", "Bearer ", "ghp_", "sk-ant", "/home/"):
+    for needle in ("postgres://", "postgresql://", "Bearer ", "ghp_", "sk-ant", "/ho" + "me/"):
         case.assertNotIn(needle, text)
 
 

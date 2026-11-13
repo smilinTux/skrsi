@@ -4,7 +4,9 @@
     baseline_skwhisper.py --log FILE --end YYYY-MM-DD [--days 1]
 
 FILE is the daemon log or its journal export. A line counts toward a day by the "YYYY-MM-DD HH:MM:SS
-[skwhisper" stamp the daemon itself writes. Counts lines saying a whisper context file was written
+[skwhisper" stamp the daemon itself writes. Days are UTC: the stamp is converted with its own offset
+(Z or +HH:MM) when it has one, else with the system zone of the machine running this script, which must
+be the zone the daemon logged in. Counts lines saying a whisper context file was written
 and lines saying a session was digested. Line text is matched, never copied.
 """
 from __future__ import annotations
@@ -17,17 +19,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import baseline_common as bc  # noqa: E402
 
-STAMP = re.compile(r"(\d{4}-\d{2}-\d{2}) \d{2}:\d{2}:\d{2} \[skwhisper")
+STAMP = re.compile(r"(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(Z|[+-]\d{2}:?\d{2})? \[skwhisper")
 
 
 def compute(log, end: str, days: int = 1) -> dict:
     start, stop = bc.window(end, days)
-    first, last = start.date().isoformat(), (stop.date()).isoformat()
     writes = digests = 0
     with open(log, encoding="utf-8", errors="replace") as handle:
         for line in handle:
             m = STAMP.search(line)
-            if not m or not first <= m.group(1) < last:
+            when = bc.parse_time(f"{m.group(1)}T{m.group(2)}{m.group(3) or ''}") if m else None
+            if when is not None and m.group(3) is None:
+                when = when.replace(tzinfo=None).astimezone().astimezone(bc.UTC)  # naive stamp: system zone
+            if when is None or not start <= when < stop:
                 continue
             writes += "Wrote whisper context" in line
             digests += "Digested session" in line

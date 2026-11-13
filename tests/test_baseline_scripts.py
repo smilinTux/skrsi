@@ -6,10 +6,12 @@ credential appears: the planted markers prove the scripts never copy content.
 
 import datetime as dt
 import json
+import os
 import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -96,6 +98,18 @@ class Sessions(Fixture):
         self.assertEqual(r["input_share_above_200k_pct"], 51.0)
         self.assertEqual((r["turns_per_session_median"], r["turns_per_session_max"]), (2.0, 3))
 
+    def test_session_start_in_window_excludes_sessions_begun_earlier(self):
+        write_lines(self.dir / "p1" / "s-a.jsonl", [
+            turn("u1", "r1", "2026-11-10T10:00:00Z", "claude-opus-5-5", 10, 90000, 0, 100, "s-a")])
+        write_lines(self.dir / "p1" / "s-e.jsonl", [
+            turn("e0", "q0", "2026-11-03T09:00:00Z", "claude-opus-5-5", 0, 0, 1000, 1, "s-e"),
+            turn("e1", "q1", "2026-11-10T09:00:00Z", "claude-opus-5-5", 0, 0, 150000, 1, "s-e")])
+        for basis in ("records", "requests"):
+            r = sessions.compute(self.dir, "2026-11-11", 7, "opus")[basis]
+            self.assertEqual((r["sessions"], r["context_start_median"]), (2, 120005))
+            self.assertEqual((r["sessions_started_in_window"], r["context_start_in_window_median"],
+                              r["context_start_in_window_p90"]), (1, 90010, 90010))
+
     def test_output_never_carries_content(self):
         assert_clean(self, self.build())
 
@@ -173,12 +187,24 @@ class Cron(Fixture):
     def test_runs_failures_and_streaks(self):
         r = self.build()
         self.assertEqual((r["runs"], r["failed"], r["failed_pct"], r["jobs_total"]), (21, 15, 71.43, 4))
-        self.assertEqual((r["jobs_streak_ge_5"], r["longest_streaks"]), (2, [7, 5, 2]))
+        self.assertEqual((r["jobs_with_streak"], r["min_streak"], r["longest_streaks"]), (2, 5, [7, 5, 2]))
+        self.assertNotIn("jobs_streak_ge_5", r)
         assert_clean(self, r)
 
     def test_host_filter(self):
         r = self.build("h1")
         self.assertEqual((r["runs"], r["failed"], r["failed_pct"]), (20, 15, 75.0))
+
+    def test_exclude_host_is_repeatable_and_combines_with_host(self):
+        path = self.build() and self.dir / "ledger.jsonl"
+        r = cron.compute(path, "2026-11-11", 30, None, 5, ["h2"])
+        self.assertEqual((r["runs"], r["failed"]), (20, 15))
+        self.assertEqual(cron.compute(path, "2026-11-11", 30, None, 5, ["h1", "h2"])["runs"], 0)
+        self.assertEqual(cron.compute(path, "2026-11-11", 30, "h1", 5, ["h1"])["runs"], 0)
+        out = subprocess.run([sys.executable, str(ROOT / "scripts" / "baseline_cron.py"), "--ledger", str(path),
+                              "--end", "2026-11-11", "--exclude-host", "h2", "--exclude-host", "h3"],
+                             check=True, capture_output=True, text=True).stdout
+        self.assertEqual(json.loads(out)["runs"], 20)
 
     def test_cli_prints_one_json_document(self):
         self.build()
@@ -240,6 +266,8 @@ class Itil(Fixture):
         put("incidents/inc-2/core.json", {"id": "inc-2", "detected_at": "2026-11-05T00:00:00+00:00", "related_problem_id": "prb-1"})
         put("incidents/inc-3/core.json", {"id": "inc-3", "detected_at": "2026-11-12T01:00:00+00:00"})
         put("incidents/inc-4/core.json", {"id": "inc-4", "detected_at": "2026-11-02T00:00:00+00:00"})
+        put("incidents/inc-5/core.json", {"id": "inc-5"})
+        put("incidents/inc-6/core.json", {"id": "inc-6", "detected_at": "not a date"})
         put("incidents/inc-9/redirect.json", {"to": "inc-1"})
         put("problems/prb-1/core.json", {"id": "prb-1", "related_incident_ids": ["inc-2"]})
         put("problems/prb-2/core.json", {"id": "prb-2", "related_incident_ids": ["inc-4"]})
@@ -247,7 +275,7 @@ class Itil(Fixture):
             put(f"kedb/ke-{n}.json", {"id": n})
         r = itil.compute(self.dir, "2026-11-11")
         self.assertEqual((r["incidents"], r["incidents_linked"], r["incidents_listed_by_problem"]), (3, 1, 2))
-        self.assertEqual((r["problems"], r["kedb_entries"]), (2, 3))
+        self.assertEqual((r["problems"], r["kedb_entries"], r["incidents_undated"]), (2, 3, 2))
         assert_clean(self, r)
 
 
@@ -268,6 +296,30 @@ class Skmemory(Fixture):
 
 
 class Skwhisper(Fixture):
+    def setUp(self):
+        super().setUp()
+        self._tz = os.environ.get("TZ")
+        self.addCleanup(self.set_zone, self._tz)
+        self.set_zone("UTC")
+
+    @staticmethod
+    def set_zone(name):
+        if name is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = name
+        time.tzset()
+
+    def test_days_are_utc_by_stamp_offset_or_system_zone(self):
+        base = "{s} [skwhisper.curator] INFO: Wrote whisper context: W (1 chars)"
+        path = write_lines(self.dir / "tz.log", [base.format(s="2026-11-11 20:30:00-05:00"),
+                                                  base.format(s="2026-11-11 20:30:00")])
+        self.assertEqual(skwhisper.compute(path, "2026-11-11", 1)["whisper_writes"], 1)
+        self.assertEqual(skwhisper.compute(path, "2026-11-12", 1)["whisper_writes"], 1)
+        self.set_zone("Etc/GMT+5")  # system zone UTC-5: the bare stamp is 01:30 UTC the next day
+        self.assertEqual(skwhisper.compute(path, "2026-11-11", 1)["whisper_writes"], 0)
+        self.assertEqual(skwhisper.compute(path, "2026-11-12", 1)["whisper_writes"], 2)
+
     def test_writes_and_digests_per_day(self):
         line = "2026-11-{d} 00:0{n}:00 [skwhisper.{m}] INFO: {t}"
         rows = [line.format(d=11, n=i, m="curator", t="Wrote whisper context: W (10 chars)") for i in range(4)]

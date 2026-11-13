@@ -6,6 +6,7 @@
 Reads DIR/incidents/*/core.json, DIR/problems/*/core.json and DIR/kedb/*.json. An incident is
 detected up to the end of the end day. `incidents_linked` counts incidents whose own related_problem_id
 is set; `incidents_listed_by_problem` counts incidents some problem lists in related_incident_ids.
+`incidents_undated` counts incidents with no readable detected_at; they are not in `incidents`.
 Redirect stubs have no core.json and are not counted.
 Only ids, dates and the link fields are read.
 """
@@ -35,11 +36,13 @@ def compute(itil, end: str) -> dict:
     _, stop = bc.window(end, None)
     problems = list(_cores(root / "problems"))
     listed = {str(i) for p in problems for i in (p.get("related_incident_ids") or [])}
-    incidents = [i for i in _cores(root / "incidents")
-                 if (bc.parse_time(i.get("detected_at")) or stop) < stop]
+    every = list(_cores(root / "incidents"))
+    dated = [(i, bc.parse_time(i.get("detected_at"))) for i in every]
+    incidents = [i for i, when in dated if when is not None and when < stop]
+    undated = sum(1 for _, when in dated if when is None)
     own = sum(1 for i in incidents if i.get("related_problem_id"))
     by_problem = sum(1 for i in incidents if str(i.get("id")) in listed)
-    return bc.emit("itil", end, None, {"incidents": len(incidents), "incidents_linked": own,
+    return bc.emit("itil", end, None, {"incidents": len(incidents), "incidents_linked": own, "incidents_undated": undated,
                                        "incidents_listed_by_problem": by_problem,
                                        "problems": len(problems), "kedb_entries": len(list((root / "kedb").glob("*.json")))})
 

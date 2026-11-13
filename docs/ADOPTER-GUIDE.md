@@ -183,14 +183,14 @@ instance repo under `baselines/`, never in this repo.
 
 | Script | Source | Reports |
 |---|---|---|
-| `baseline_sessions.py` | Claude Code transcripts (usage fields only) | turns, sessions, cache and output tokens, context per turn and at session start, share of input from turns above 200k |
+| `baseline_sessions.py` | Claude Code transcripts (usage fields only) | turns, sessions, cache and output tokens, context per turn and at session start (also over sessions that began inside the window), share of input from turns above 200k |
 | `baseline_gateway.py` | gateway `metrics.db` (read-only) and the deploy checkout | route status counts, rows with no cost, rows with no caller identity, build commit and how far it trails main |
-| `baseline_cron.py` | sk-cron-run ledger | runs, failure rate, failure streaks per job |
+| `baseline_cron.py` | sk-cron-run ledger | runs, failure rate, jobs with a failure streak (`--host` keeps one host, `--exclude-host` drops test or other hosts from a merged ledger) |
 | `baseline_github.py` | recorded `gh pr list --json number,title,mergedAt` output | merged PRs and the share titled as fixes |
 | `baseline_cardstore.py` | coord `card_events` | verdict links, review rounds, first-pass cards |
-| `baseline_itil.py` | ITIL store | incidents, incidents linked to a problem, problems, known-error entries |
+| `baseline_itil.py` | ITIL store | incidents (and incidents with no detected date), incidents linked to a problem, problems, known-error entries |
 | `baseline_skmemory.py` | skmemory `retrieval.jsonl` | search latency percentiles and the share of searches with an arm timeout |
-| `baseline_skwhisper.py` | skwhisper daemon log | whisper context writes and digests per day |
+| `baseline_skwhisper.py` | skwhisper daemon log | whisper context writes and digests per day (days are UTC: the stamp's own offset, else the system zone) |
 
 `baseline_common.py` holds the window and percentile helpers (nearest rank). `tests/test_baseline_scripts.py` pins every
 script to a hand-computed fixture and scans each output for content, addresses and host-shaped names.

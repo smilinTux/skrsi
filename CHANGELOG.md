@@ -9,7 +9,9 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 - Card `3611ea28` (P0.1): `scripts/baseline_{sessions,gateway,cron,github,cardstore,itil,skmemory,skwhisper}.py` and
   `baseline_common.py`. Each recomputes baseline numbers from its source (read-only, stdlib, window end date as an
   argument) and prints one JSON aggregate. `tests/test_baseline_scripts.py` pins them to hand-computed fixtures and
-  scans their output for content, addresses and host-shaped names. Documented in `docs/ADOPTER-GUIDE.md`.
+  scans their output for content, addresses and host-shaped names. Documented in `docs/ADOPTER-GUIDE.md`. Review fixes: `context_start_in_window_*` over sessions that began in the
+  window, `baseline_cron.py --exclude-host` and `jobs_with_streak`, UTC days in `baseline_skwhisper.py`, and
+  `incidents_undated` in `baseline_itil.py`.
 - Card `7aa8e01f` (P1.7): the framework and instance model. `docs/INSTANCE-MODEL.md`; `skrsi.cluster.v1`
   (`schemas/cluster-v1.schema.json`) for an instance `cluster.yaml`; the instance fixture `templates/instance-repo/`
   (`CONFIG_SCHEMA` 1, synthetic `cluster.yaml.example`, `baselines/`, `evidence/`, `evaluations/`, a submodule

@@ -6,6 +6,10 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ### Added
 
+- Card `c2a1f223` (P1.5): nine tags appended to `schemas/lesson-tags-v1.json` (append-only within v1) for the seed
+  lesson candidates: `disk-budget`, `no-failover`, `post-apply-check`, `stale-evidence`, `start-order`,
+  `test-isolation`, `turn-end-wait`, `unalerted-failure` and `unclaimed-work`. The vocabulary is now 24 tags, its cap;
+  the next new class needs a merge or `lesson-tags-v2`. The digest in `docs/CONTRACTS.md` is updated.
 - Card `3611ea28` (P0.1): `scripts/baseline_{sessions,gateway,cron,github,cardstore,itil,skmemory,skwhisper}.py` and
   `baseline_common.py`. Each recomputes baseline numbers from its source (read-only, stdlib, window end date as an
   argument) and prints one JSON aggregate. `tests/test_baseline_scripts.py` pins them to hand-computed fixtures and

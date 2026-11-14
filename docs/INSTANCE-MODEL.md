@@ -41,7 +41,7 @@ flowchart LR
 | Framework (`skrsi`) | schemas, validators, baseline and collector-side scripts, the instance fixture `templates/instance-repo/`, its generator, drift and scrub CI, these docs | cluster data, hostnames, measured numbers |
 | Template (`skrsi-config-template`) | the output of `scripts/generate-config-template.sh`, nothing else | hand edits, real names |
 | Instance (`skrsi-config-<cluster>`) | `CONFIG_SCHEMA`, `framework/`, `cluster.yaml`, `baselines/`, `evidence/<node>/<YYYY-MM-DD>.json` aggregates, `evaluations/` including `evaluations/recurrence/` and the 30 day review | framework code, addresses, domains, content, credentials |
-| Canon (skbrain-ops or a cluster canon) | lessons, as canon pages of type `lesson` | recurrence counts (those are in the instance) |
+| Canon (the estate's skbrain canon, `skbrain-ops-<estate>`) | lessons, as canon pages of type `lesson` | recurrence counts (those are in the instance) |
 
 The golden rule, as in skstacks: if another operator running a different cluster would want the change, it goes to
 the framework. If it names a node, a number measured on a cluster, or a threshold for one cluster, it goes to the
@@ -77,7 +77,7 @@ skrsi-config-example/
 | `cluster` | cluster name; the repo is `skrsi-config-<cluster>` |
 | `nodes[]` | `name` (short name: lowercase letters, digits, inner hyphens, no dots), `role`, `readers` (the collector readers enabled on that node; empty means enrolled but not collecting) |
 | `services[]` | adopted services and the repos that hold their `skrsi/` target definitions |
-| `canon` | `{repo, namespace}`: where this cluster's lessons live |
+| `canon` | `{repo, namespace}`: where this cluster's lessons live. Always the canon of the SAME estate, never another estate's. `repo` is `owner/name` and resolves on the forge named in that canon's `skbrain.yaml` (`forge`), so it may be a self-hosted forge, not GitHub |
 | `overrides[]` | optional `{target_id, metric, threshold, paused?}`: cluster thresholds for targets defined in service repos |
 
 The node short names in `cluster.yaml` are the allowlist for the whole instance. The validator finds node names two

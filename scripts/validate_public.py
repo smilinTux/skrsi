@@ -95,7 +95,7 @@ def _iso_date(value) -> bool:
 
 
 def _envelope_errors(errors: list[str], instance: dict) -> None:
-    """Optional canon envelope fields that skbrain-ops pages carry."""
+    """Optional canon envelope fields that skbrain canon pages carry."""
     get = instance.get
     if "namespace" in instance and not (isinstance(get("namespace"), str) and len(get("namespace")) <= 64
                                         and TAG.fullmatch(get("namespace"))):

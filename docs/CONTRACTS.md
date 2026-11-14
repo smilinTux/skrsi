@@ -90,17 +90,17 @@ tag-shaped (`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`), so `sk-standards`, `cloud9` and 
 may end in a newline; the schema patterns are anchored so a trailing newline is rejected there as it is in the
 validator.
 
-Because a lesson is canon page front matter, it may also carry the canon envelope that every skbrain-ops page has. All
+Because a lesson is canon page front matter, it may also carry the canon envelope that every skbrain canon page has. All
 six fields are optional, and any other field still fails validation:
 
-- `namespace`: the canon namespace, a lowercase slug (`ops` for skbrain-ops).
+- `namespace`: the canon namespace, a lowercase slug (`ops` for a skbrain canon).
 - `lifecycle`: `draft`, `reviewed` or `canon`.
 - `edges`: up to 50 typed links in the canon edge shape, `{target, type?}`, where `target` is a page slug and `type`
   is a snake_case edge type such as `touches` or `remediates`. The canon parser's string shorthand is not accepted.
 - `created`, `updated`: ISO 8601 date strings. YAML parses an unquoted `2026-11-12` into a date object, so a consumer
   that reads front matter (skbrain lint, P1.4) must convert dates to `YYYY-MM-DD` strings before validating. Neither
   the schema nor the validator accepts a date object.
-- `state_refs`: pointers into operational stores, never state itself, in the shape skbrain-ops pages use. An object
+- `state_refs`: pointers into operational stores, never state itself, in the shape skbrain canon pages use. An object
   with at most two keys, both optional: `kedb`, a known-error id of the form `ke-<slug>` (for example
   `ke-2d21671f` or `ke-outbox-flood`), and `actions`, a list of up to 10 unique operator standard-action names in the
   tag shape (for example `[restart-dashboard]`; an empty list is valid). Any other key fails validation.
@@ -116,7 +116,7 @@ it reads, so an authored copy could only disagree with it. A `source_path` would
 that may be quoted outside the canon.
 
 Canon `tags` on a lesson are limited to the vocabulary below. That differs from other canon page types, whose `tags`
-are free topic tags. P1.3 records this rule in the skbrain-ops `AGENTS.md`.
+are free topic tags. The skbrain framework records this rule in its `docs/SCHEMA.md`, and each estate canon follows it.
 
 There is deliberately no `recurrence` field, and an authored one fails validation. Recurrence is counted from
 evidence records by the collector. Writing it into front matter would turn every count into an automated canon

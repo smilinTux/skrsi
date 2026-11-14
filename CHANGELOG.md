@@ -4,6 +4,13 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- skrsi#15: four tags appended to `schemas/lesson-tags-v1.json` (append-only within v1) from the 2026-11-13/14
+  agent token-burn lessons: `token-budget`, `retry-amplification`, `no-attribution` and `unalerted-rate` (a rate far
+  above baseline with no failure, which `unalerted-failure` by its definition does not cover). The v1 cap rises from
+  24 to 32 tags so the vocabulary can grow without a v2 while every existing tag keeps its meaning. The digest in
+  `docs/CONTRACTS.md` is updated.
+
 ### Changed
 - Docs: a cluster's `canon` is the skbrain canon of the same estate (`skbrain-ops-<estate>`), never another
   estate's, and `canon.repo` resolves on the forge named in that canon's `skbrain.yaml`. Wording no longer names one

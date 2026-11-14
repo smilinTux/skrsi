@@ -4,6 +4,11 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+- Docs: a cluster's `canon` is the skbrain canon of the same estate (`skbrain-ops-<estate>`), never another
+  estate's, and `canon.repo` resolves on the forge named in that canon's `skbrain.yaml`. Wording no longer names one
+  `skbrain-ops` repo. No schema or validator behaviour change.
+
 ### Added
 
 - Card `c2a1f223` (P1.5): nine tags appended to `schemas/lesson-tags-v1.json` (append-only within v1) for the seed

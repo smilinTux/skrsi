@@ -4,6 +4,9 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+- `lesson-v1` envelope `namespace` description names the estate canon (`skbrain-ops-<estate>`), not the retired single `skbrain-ops`. Description only; validation is unchanged.
+
 ### Added
 - skrsi#15: four tags appended to `schemas/lesson-tags-v1.json` (append-only within v1) from the 2026-11-13/14
   agent token-burn lessons: `token-budget`, `retry-amplification`, `no-attribution` and `unalerted-rate` (a rate far

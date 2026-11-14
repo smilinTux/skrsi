@@ -30,11 +30,11 @@ record.
 - Identifiers are opaque. They must not contain credentials, protected content,
   personal filesystem paths, or private host names.
 - Carve-out for vocabularies: `schemas/lesson-tags-v1.json` is not a schema but a
-  list, and it is append-only within v1. A tag may be added in place. Renaming or
+  list, and it is append-only within v1, capped at 32 tags. A tag may be added in place. Renaming or
   removing a tag, or changing its meaning, requires a new file
   `schemas/lesson-tags-v2.json` with identifier `skrsi.lesson-tags.v2`. Consumers
   either read the list from the skrsi checkout path or pin it by digest. The
-  current file is `sha256:04aba3c952feee891984a5bb33338c8e14ed725be51e3db222b179457255f0d3`; every append updates
+  current file is `sha256:bd542607bcf240abcc30e62d0d1ff8ff65f17b821bc470a5fc0903fa2e71c54b`; every append updates
   this line (a test enforces it). A consumer on an older pin does not know a newly
   appended tag and maps it to the `fallback` value, `unclassified`, which is the
   expected degradation, not an error.

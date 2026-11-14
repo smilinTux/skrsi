@@ -540,7 +540,7 @@ class LessonContractTests(unittest.TestCase):
         self.assertEqual(vocabulary["schema"], "skrsi.lesson-tags.v1")
         self.assertEqual(vocabulary["fallback"], "unclassified")
         self.assertNotIn(vocabulary["fallback"], vocabulary["tags"])
-        self.assertTrue(8 <= len(vocabulary["tags"]) <= 24)
+        self.assertTrue(8 <= len(vocabulary["tags"]) <= 32)
         tag_shape = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
         for tag, meaning in vocabulary["tags"].items():
             with self.subTest(tag=tag):

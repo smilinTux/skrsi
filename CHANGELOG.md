@@ -5,6 +5,9 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 ## [Unreleased]
 
 ### Changed
+- `AGENTS.md` rewritten as a complete, framework-agnostic guide for new users and agents: rules, the four layers,
+  contracts, adoption on any stack and any CI, outcome rules, live evidence, instances, lessons, telemetry, the lane
+  playbook, repo workflow and per-framework setup. Rules are now stack and board neutral. No code or schema change.
 - `lesson-v1` envelope `namespace` description names the estate canon (`skbrain-ops-<estate>`), not the retired single `skbrain-ops`. Description only; validation is unchanged.
 
 ### Added

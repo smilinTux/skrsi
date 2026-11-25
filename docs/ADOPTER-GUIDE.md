@@ -232,4 +232,3 @@ track the same units. A window under 4 node-days is capped at `inconclusive`.
 
 Readings that the evidence cannot honestly support stay out: resident memory is a point sample at collection, not a
 daily average, and CPU over a window that spans a restart is reported since the restart.
-

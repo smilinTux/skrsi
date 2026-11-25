@@ -168,6 +168,8 @@ Two delivery rules keep feedback cheap:
 | `schemas/` | JSON Schema contracts and the lesson tag vocabulary |
 | `examples/` | Synthetic golden records, reproduced by tests |
 | `targets/sk-build-quality.json` | The target for build-quality telemetry |
+| `targets/sk-node-resource-efficiency.json` | The target for service CPU, memory, kills, disk and sync size per cluster |
+| `scripts/resources_metrics.py` | Flattens `resources` evidence into a metrics file for that target |
 | `scripts/build_evaluation.py` | Builds and validates `skrsi.evaluation.v4` (`validate_v4` is normative) |
 | `scripts/evaluation_report.py` | Renders the PR comment |
 | `scripts/build_telemetry.py` | Build-quality metrics from `gh` and board metadata |

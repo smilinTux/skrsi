@@ -214,3 +214,22 @@ Defect classes come from recorded FAIL rounds and from `defect:<class>` labels, 
 `false-close`, `non-hermetic-test`, `instrument-validity`, `concurrency`, `conflict-rebase`, `wrong-default`, `style`.
 
 See the [lane playbook](./PLAYBOOK-LANES.md) for the briefs and the landing script.
+
+## Node resource efficiency
+
+`targets/sk-node-resource-efficiency.json` tracks the CPU, memory and disk a cluster's declared services use. Its
+evidence comes from a collector-side `resources` reader (the skcapstone collector implements one), which writes one
+record per node and day under `readers.resources` with, per declared unit, the CPU core-percent from cumulative cgroup
+counters over a stated window (`cpu_basis` `delta` between two collections, or `since_start` on a first run or after a
+restart), the resident memory and the cgroup memory peak, and the kills and restarts that day; plus the node's lowest
+disk free percentage and, per declared synced folder, its file count and out-of-sync file count. Unit names come from a
+node-local allowlist, never from discovery, and an unreadable unit is `missing`, never zero.
+
+`python3 scripts/resources_metrics.py --instance <checkout> --start <day> --end <day>` turns a window of that evidence into
+a metrics file for the target. The docstring states how each metric is aggregated. Because the totals fall when a unit
+leaves the allowlist, the cohort id carries an allowlist digest, and `--baseline <other side>` asserts that both sides
+track the same units. A window under 4 node-days is capped at `inconclusive`.
+
+Readings that the evidence cannot honestly support stay out: resident memory is a point sample at collection, not a
+daily average, and CPU over a window that spans a restart is reported since the restart.
+

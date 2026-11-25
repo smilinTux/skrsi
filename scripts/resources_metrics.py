@@ -21,7 +21,8 @@ How each metric is aggregated over the window:
 
 - `service_cpu_core_pct_*`, `service_rss_mb_*`: the mean of each (node, unit) pair over the days it was
   measured, then summed over pairs (`_total`) or the largest pair (`_max`). 100 is one full core.
-- `service_kill_count`, `service_restart_count`: all kills or restarts in the window, per calendar day.
+- `service_kill_count`, `service_restart_count`: all kills or restarts in the window, per calendar day, over
+  the unit-days whose count could be read (a `null` count is unknown, not zero; none readable gives `null`).
 - `node_disk_free_pct_min`: the lowest free percentage seen on any node on any day.
 - `sync_folder_*_max`: the largest file count and the largest out-of-sync file count on any node and day.
 - `resource_coverage_ratio`: measured unit-days over declared unit-days. A node-day with no evidence, or
@@ -99,7 +100,7 @@ def compute(instance: Path, start: str, end: str, nodes: list[str] | None = None
     allowlist: set[tuple[str, str]] = set()
     declared_by_node: dict[str, int] = {}
     seen_days: dict[str, set[str]] = {n: set() for n in nodes}
-    measured = kills = restarts = sample = 0
+    measured = kills = restarts = sample = kills_known = restarts_known = 0
     disk_min = files_max = need_max = None
     cpu_cumulative = True
     for node in nodes:
@@ -130,8 +131,10 @@ def compute(instance: Path, start: str, end: str, nodes: list[str] | None = None
                     cpu_cumulative &= u.get("cpu_basis") in CUMULATIVE
                 if _num(u.get("rss_mb")):
                     vals["rss"].append(u["rss_mb"])
-                kills += u.get("kills", 0) if _num(u.get("kills")) else 0
-                restarts += u.get("restarts", 0) if _num(u.get("restarts")) else 0
+                if _num(u.get("kills")):
+                    kills, kills_known = kills + u["kills"], kills_known + 1
+                if _num(u.get("restarts")):
+                    restarts, restarts_known = restarts + u["restarts"], restarts_known + 1
             disk = res.get("disk") or {}
             if _num(disk.get("free_pct_min")):
                 disk_min = disk["free_pct_min"] if disk_min is None else min(disk_min, disk["free_pct_min"])
@@ -154,8 +157,8 @@ def compute(instance: Path, start: str, end: str, nodes: list[str] | None = None
         "service_cpu_core_pct_max": _r(max(cpu)) if cpu else None,
         "service_rss_mb_total": _r(sum(rss), 1) if rss else None,
         "service_rss_mb_max": _r(max(rss), 1) if rss else None,
-        "service_kill_count": _r(kills / len(days)) if sample else None,
-        "service_restart_count": _r(restarts / len(days)) if sample else None,
+        "service_kill_count": _r(kills / len(days)) if kills_known else None,
+        "service_restart_count": _r(restarts / len(days)) if restarts_known else None,
         "node_disk_free_pct_min": _r(disk_min),
         "sync_folder_file_count_max": files_max,
         "sync_folder_need_files_max": need_max,

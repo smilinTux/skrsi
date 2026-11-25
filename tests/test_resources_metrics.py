@@ -102,6 +102,14 @@ class ResourcesMetricsTests(unittest.TestCase):
         self.assertTrue(all(v["value"] is None for v in empty["metrics"].values()))
         self.assertEqual(empty["cohort"]["sample_size"], 0)
 
+    def test_unreadable_kill_counts_are_null_not_zero(self):
+        quiet = unit(10, 10)
+        quiet["kills"] = quiet["restarts"] = None
+        self.put("node-a", "2026-01-01", evidence({"svc-x": quiet}))
+        doc = rm.compute(self.root, "2026-01-01", "2026-01-01", nodes=["node-a"])
+        self.assertIsNone(doc["metrics"]["service_kill_count"]["value"])
+        self.assertIsNone(doc["metrics"]["service_restart_count"]["value"])
+
     def test_instantaneous_cpu_fails_the_cpu_invariant(self):
         self.put("node-a", "2026-01-01", evidence({"svc-x": unit(10, 10, basis="instant")}))
         doc = rm.compute(self.root, "2026-01-01", "2026-01-01", nodes=["node-a"])

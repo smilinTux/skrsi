@@ -1,0 +1,75 @@
+{
+  "schema": "skrsi.target.v2",
+  "target_id": "sk-node-resource-efficiency",
+  "revision": 1,
+  "status": "active",
+  "owner": "platform-ops",
+  "scope": {
+    "products": [
+      "any-cluster-running-the-skrsi-resources-reader"
+    ],
+    "event_types": [
+      "node.resources_sampled",
+      "service.restarted",
+      "service.killed",
+      "sync_folder.scanned"
+    ]
+  },
+  "objective": "Cut the CPU, memory and disk that a cluster's declared services use, without killing or restarting them more often, leaving any node short of disk, or leaving a synced folder behind.",
+  "invariants": [
+    "only declared unit names, node short names and numbers are collected; no command lines, paths, environment or log text",
+    "an unmeasured service or node is counted as missing, never as idle",
+    "cpu is measured from cumulative cgroup counters over a stated window, never from one instantaneous sample",
+    "the tracked unit allowlist is the same on both sides of the comparison",
+    "min_sample_size: 4 node-days per window"
+  ],
+  "metrics": [
+    "service_cpu_core_pct_total",
+    "service_cpu_core_pct_max",
+    "service_rss_mb_total",
+    "service_rss_mb_max",
+    "service_kill_count",
+    "service_restart_count",
+    "node_disk_free_pct_min",
+    "sync_folder_file_count_max",
+    "sync_folder_need_files_max",
+    "resource_coverage_ratio"
+  ],
+  "stop_rules": [
+    {
+      "id": "disk-floor",
+      "condition": "node_disk_free_pct_min is below 2 on any node: a file sync daemon stops near its free-space floor, so pause and free disk before measuring anything else.",
+      "action": "pause",
+      "owner": "platform-ops"
+    },
+    {
+      "id": "kills-rise",
+      "condition": "service_kill_count rises beyond tolerance: a saving that gets a service killed (OOM, realtime limit, watchdog) is not a saving.",
+      "action": "rollback",
+      "owner": "platform-ops"
+    },
+    {
+      "id": "sync-behind",
+      "condition": "sync_folder_need_files_max rises beyond tolerance: trimming what a folder replicates must not leave a node behind.",
+      "action": "pause",
+      "owner": "platform-ops"
+    },
+    {
+      "id": "coverage-floor",
+      "condition": "resource_coverage_ratio is below 0.8, so the totals describe a subset of the declared services and a missing unit reads as a saving.",
+      "action": "pause",
+      "owner": "platform-ops"
+    },
+    {
+      "id": "cpu-bought-with-memory",
+      "condition": "service_cpu_core_pct_total falls while service_rss_mb_total rises beyond tolerance, for example a poll loop replaced by an unbounded cache.",
+      "action": "pause",
+      "owner": "platform-ops"
+    }
+  ],
+  "expires_at": "2027-05-26T00:00:00Z",
+  "rollback": {
+    "trigger": "any invariant failure or stop rule",
+    "owner": "platform-ops"
+  }
+}

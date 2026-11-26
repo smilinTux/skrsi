@@ -4,6 +4,13 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- `targets/sk-node-resource-efficiency.json` (`skrsi.target.v2`): service CPU core-percent, RSS, kills and restarts
+  over a declared unit allowlist, node disk free, synced-folder file count and lag, and unit-day coverage, with stop
+  rules for the disk floor, a kill rise, a folder left behind, low coverage and CPU bought with memory. It names no
+  cluster service or node. `scripts/resources_metrics.py` flattens a window of `resources` evidence into its metrics
+  file; `tests/test_resources_metrics.py` pins it to a hand-computed fixture. Documented in `docs/ADOPTER-GUIDE.md`.
+
 ### Changed
 - `AGENTS.md` rewritten as a complete, framework-agnostic guide for new users and agents: rules, the four layers,
   contracts, adoption on any stack and any CI, outcome rules, live evidence, instances, lessons, telemetry, the lane
